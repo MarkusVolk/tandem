@@ -26,6 +26,7 @@ tandem_sources = files(
   'plugins/share.c',
   'plugins/mpriscontrol.c',
   'plugins/systemvolume.c',
+  'plugins/mprisremote.c',
   'dbus-api.c',
   'cli.c',
   'smoke.c',

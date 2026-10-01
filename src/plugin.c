@@ -37,6 +37,7 @@ GType tandem_notifications_plugin_get_type (void);
 GType tandem_share_plugin_get_type (void);
 GType tandem_mpriscontrol_plugin_get_type (void);
 GType tandem_systemvolume_plugin_get_type (void);
+GType tandem_mprisremote_plugin_get_type (void);
 
 static const TandemPluginInfo registry[] = {
   { "ping", tandem_ping_plugin_get_type },
@@ -49,6 +50,7 @@ static const TandemPluginInfo registry[] = {
   { "share", tandem_share_plugin_get_type },
   { "mpriscontrol", tandem_mpriscontrol_plugin_get_type },
   { "systemvolume", tandem_systemvolume_plugin_get_type },
+  { "mprisremote", tandem_mprisremote_plugin_get_type },
 };
 
 static void
