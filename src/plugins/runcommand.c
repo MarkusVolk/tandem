@@ -17,19 +17,46 @@ static const char *const runcommand_incoming[] = { "kdeconnect.runcommand.reques
 static const char *const runcommand_outgoing[] = { "kdeconnect.runcommand", NULL };
 
 static JsonObject *
-load_commands (TandemPlugin *plugin)
+parse_commands (const char *json)
 {
-  g_autofree char *json = g_settings_get_string (tandem_plugin_get_settings (plugin), "commands");
   g_autoptr(JsonParser) parser = json_parser_new ();
   JsonNode *root;
 
-  if (json_parser_load_from_data (parser, json, -1, NULL))
+  if (json != NULL && json_parser_load_from_data (parser, json, -1, NULL))
     {
       root = json_parser_get_root (parser);
       if (root != NULL && JSON_NODE_HOLDS_OBJECT (root))
         return json_object_ref (json_node_get_object (root));
     }
   return json_object_new ();
+}
+
+static void save_commands (TandemPlugin *plugin, JsonObject *commands);
+
+static JsonObject *
+load_commands (TandemPlugin *plugin)
+{
+  GSettings *settings = tandem_plugin_get_settings (plugin);
+  g_autofree char *json = g_settings_get_string (settings, "commands");
+  JsonObject *commands = parse_commands (json);
+
+  if (json_object_get_size (commands) == 0 && !g_settings_get_boolean (settings, "commands-seeded"))
+    {
+      TandemDevice *device = tandem_plugin_get_device (plugin);
+      g_autoptr(GSettings) global = g_settings_new ("de.flk.Tandem");
+      g_autofree char *defaults = g_settings_get_string (global, "default-commands");
+
+      json_object_unref (commands);
+      commands = parse_commands (defaults);
+      g_settings_set_boolean (settings, "commands-seeded", TRUE);
+      if (json_object_get_size (commands) > 0)
+        {
+          g_debug ("runcommand: seeding %s with %u default commands", tandem_device_get_id (device),
+                   json_object_get_size (commands));
+          save_commands (plugin, commands);
+        }
+    }
+  return commands;
 }
 
 static void

@@ -43,6 +43,10 @@
       <default>[]</default>
       <summary>Plugins switched off for every device</summary>
     </key>
+    <key name="default-commands" type="s">
+      <default>"{}"</default>
+      <summary>Commands a newly paired device may run here, as a JSON object of id to name and command</summary>
+    </key>
     <key name="send-passwords" type="b">
       <default>false</default>
       <summary>Send clipboard contents marked as passwords</summary>
@@ -77,6 +81,10 @@
     <key name="commands" type="s">
       <default>"{}"</default>
       <summary>Commands the device may run here, as a JSON object of id to name and command</summary>
+    </key>
+    <key name="commands-seeded" type="b">
+      <default>false</default>
+      <summary>Whether the default commands were copied to this device once</summary>
     </key>
     <key name="notification-blacklist" type="as">
       <default>[]</default>
