@@ -3,22 +3,21 @@
 #include "dbus-api.h"
 #include "notify.h"
 #include "sni.h"
-#include "ui/window.h"
+#include "frontend.h"
 #include "tandem-build.h"
 
 struct _TandemApp
 {
-  AdwApplication parent_instance;
+  GApplication parent_instance;
 
   TandemConfig *config;
   TandemManager *manager;
   TandemSni *sni;
   GDBusConnection *connection;
-  GtkWindow *window;
   gboolean held;
 };
 
-G_DEFINE_FINAL_TYPE (TandemApp, tandem_app, ADW_TYPE_APPLICATION)
+G_DEFINE_FINAL_TYPE (TandemApp, tandem_app, G_TYPE_APPLICATION)
 
 TandemConfig *
 tandem_app_get_config (TandemApp *self)
@@ -35,19 +34,12 @@ tandem_app_get_manager (TandemApp *self)
 void
 tandem_app_show_window (TandemApp *self)
 {
-  if (self->window == NULL)
-    {
-      self->window = GTK_WINDOW (tandem_window_new (self));
-      g_object_add_weak_pointer (G_OBJECT (self->window), (gpointer *) &self->window);
-    }
-  gtk_window_present (self->window);
+  tandem_frontend_activate ();
 }
 
 void
 tandem_app_quit (TandemApp *self)
 {
-  if (self->window != NULL)
-    gtk_window_destroy (self->window);
   if (self->held)
     {
       self->held = FALSE;
@@ -111,9 +103,6 @@ pair_request_cb (TandemDevice *device, gpointer user_data)
   g_autofree char *body = g_strdup_printf ("Verification key: %s", key != NULL ? key : "?");
   g_autoptr(TandemNotification) notification = tandem_notification_new (summary, body);
 
-  if (self->window != NULL && gtk_widget_get_visible (GTK_WIDGET (self->window)))
-    gtk_window_present (self->window);
-
   tandem_notification_set_icon (notification, "phone-symbolic");
   tandem_notification_set_urgency (notification, 2);
   tandem_notification_set_timeout (notification, 30000);
@@ -141,6 +130,7 @@ device_added_cb (TandemManager *manager, TandemDevice *device, gpointer user_dat
   g_signal_connect (device, "pair-request", G_CALLBACK (pair_request_cb), self);
   g_signal_connect (device, "pair-failed", G_CALLBACK (pair_failed_cb), self);
   g_signal_connect_swapped (device, "plugins-changed", G_CALLBACK (tandem_dbus_api_device_changed), device);
+  g_signal_connect (device, "plugin-changed", G_CALLBACK (tandem_dbus_api_plugin_changed), NULL);
   tandem_dbus_api_add_device (device);
   tandem_dbus_api_notify_device ("DeviceAdded", tandem_device_get_id (device));
 }
@@ -150,6 +140,7 @@ device_removed_cb (TandemManager *manager, TandemDevice *device, gpointer user_d
 {
   g_signal_handlers_disconnect_by_data (device, user_data);
   g_signal_handlers_disconnect_by_func (device, tandem_dbus_api_device_changed, device);
+  g_signal_handlers_disconnect_by_func (device, tandem_dbus_api_plugin_changed, NULL);
   tandem_dbus_api_remove_device (device);
   tandem_dbus_api_notify_device ("DeviceRemoved", tandem_device_get_id (device));
 }
@@ -179,33 +170,10 @@ refresh_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
   tandem_app_refresh (TANDEM_APP (user_data));
 }
 
-GtkWidget *tandem_preferences_dialog_new (TandemApp *app);
-void       tandem_show_about_dialog (GtkWidget *parent);
-
-static void
-preferences_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
-{
-  TandemApp *self = TANDEM_APP (user_data);
-
-  tandem_app_show_window (self);
-  adw_dialog_present (ADW_DIALOG (tandem_preferences_dialog_new (self)), GTK_WIDGET (self->window));
-}
-
-static void
-about_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
-{
-  TandemApp *self = TANDEM_APP (user_data);
-
-  tandem_app_show_window (self);
-  tandem_show_about_dialog (GTK_WIDGET (self->window));
-}
-
 static const GActionEntry app_actions[] = {
   { "quit", quit_activated },
   { "show", show_activated },
   { "refresh", refresh_activated },
-  { "preferences", preferences_activated },
-  { "about", about_activated },
 };
 
 static void
@@ -221,16 +189,11 @@ tandem_app_startup (GApplication *application)
     g_error ("Cannot set up the configuration: %s", error->message);
 
   g_action_map_add_action_entries (G_ACTION_MAP (self), app_actions, G_N_ELEMENTS (app_actions), self);
-  gtk_application_set_accels_for_action (GTK_APPLICATION (self), "app.quit",
-                                         (const char *[]) { "<Control>q", NULL });
 
-  if (g_application_get_flags (application) & G_APPLICATION_IS_SERVICE)
-    {
-      self->held = TRUE;
-      g_application_hold (application);
-    }
+  self->held = TRUE;
+  g_application_hold (application);
 
-  g_message ("tandem %s, device id %s", TANDEM_VERSION, tandem_config_get_device_id (self->config));
+  g_message ("tandemd %s, device id %s", TANDEM_VERSION, tandem_config_get_device_id (self->config));
 
   self->manager = tandem_manager_new (self->config);
   g_signal_connect (self->manager, "device-added", G_CALLBACK (device_added_cb), self);
@@ -250,7 +213,6 @@ tandem_app_startup (GApplication *application)
 static void
 tandem_app_activate (GApplication *application)
 {
-  tandem_app_show_window (TANDEM_APP (application));
 }
 
 static gboolean
@@ -314,7 +276,7 @@ TandemApp *
 tandem_app_new (void)
 {
   return g_object_new (TANDEM_TYPE_APP,
-                       "application-id", TANDEM_APP_ID,
-                       "flags", G_APPLICATION_DEFAULT_FLAGS,
+                       "application-id", TANDEM_DBUS_NAME,
+                       "flags", G_APPLICATION_IS_SERVICE,
                        NULL);
 }

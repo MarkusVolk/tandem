@@ -16,13 +16,14 @@ glib_dep = dependency('glib-2.0', version: '>= 2.76')
 gio_dep = dependency('gio-2.0')
 gio_unix_dep = dependency('gio-unix-2.0')
 json_dep = dependency('json-glib-1.0')
-gtk_dep = dependency('gtk4', version: '>= 4.14')
-adw_dep = dependency('libadwaita-1', version: '>= 1.5')
+gtk_dep = dependency('gtk4', version: '>= 4.14', required: get_option('gui'))
+adw_dep = dependency('libadwaita-1', version: '>= 1.5', required: get_option('gui'))
+build_gui = gtk_dep.found() and adw_dep.found()
 gnutls_dep = dependency('gnutls')
-pulse_dep = dependency('libpulse-mainloop-glib')
-wayland_dep = dependency('wayland-client')
+pulse_dep = dependency('libpulse-mainloop-glib', required: get_option('pulse'))
+wayland_dep = dependency('wayland-client', required: get_option('wayland'))
 xkb_dep = dependency('xkbcommon')
-gst_dep = dependency('gstreamer-1.0')
+gst_dep = dependency('gstreamer-1.0', required: get_option('gstreamer'))
 m_dep = cc.find_library('m', required: false)
 
 config_h = configuration_data()
@@ -30,6 +31,9 @@ config_h.set_quoted('TANDEM_APP_ID', app_id)
 config_h.set_quoted('TANDEM_VERSION', meson.project_version())
 config_h.set_quoted('TANDEM_DATADIR', datadir)
 config_h.set_quoted('TANDEM_BINDIR', bindir)
+config_h.set('TANDEM_HAVE_PULSE', pulse_dep.found())
+config_h.set('TANDEM_HAVE_GSTREAMER', gst_dep.found())
+config_h.set('TANDEM_HAVE_WAYLAND', wayland_dep.found())
 configure_file(output: 'tandem-build.h', configuration: config_h)
 config_inc = include_directories('.')
 
@@ -45,6 +49,12 @@ add_project_arguments(
   language: 'c',
 )
 
-subdir('protocols')
+if wayland_dep.found()
+  subdir('protocols')
+endif
 subdir('data')
 subdir('src')
+if build_gui
+  subdir('gui')
+endif
+

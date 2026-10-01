@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "plugin.h"
+#include "tandem-build.h"
 #include "device.h"
 
 #include <string.h>
@@ -36,7 +37,9 @@ GType tandem_runcommand_plugin_get_type (void);
 GType tandem_notifications_plugin_get_type (void);
 GType tandem_share_plugin_get_type (void);
 GType tandem_mpriscontrol_plugin_get_type (void);
+#ifdef TANDEM_HAVE_PULSE
 GType tandem_systemvolume_plugin_get_type (void);
+#endif
 GType tandem_mprisremote_plugin_get_type (void);
 GType tandem_mousepad_plugin_get_type (void);
 GType tandem_presenter_plugin_get_type (void);
@@ -57,7 +60,9 @@ static const TandemPluginInfo registry[] = {
   { "notifications", tandem_notifications_plugin_get_type },
   { "share", tandem_share_plugin_get_type },
   { "mpriscontrol", tandem_mpriscontrol_plugin_get_type },
+#ifdef TANDEM_HAVE_PULSE
   { "systemvolume", tandem_systemvolume_plugin_get_type },
+#endif
   { "mprisremote", tandem_mprisremote_plugin_get_type },
   { "mousepad", tandem_mousepad_plugin_get_type },
   { "presenter", tandem_presenter_plugin_get_type },
@@ -239,4 +244,58 @@ void
 tandem_plugin_changed (TandemPlugin *self)
 {
   g_signal_emit (self, signals[CHANGED], 0);
+}
+
+GVariant *
+tandem_plugin_get_state (TandemPlugin *self)
+{
+  TandemPluginClass *klass = TANDEM_PLUGIN_GET_CLASS (self);
+  GVariant *state = klass->get_state != NULL ? klass->get_state (self) : NULL;
+
+  if (state == NULL)
+    state = tandem_plugin_empty_result ();
+  return g_variant_ref_sink (state);
+}
+
+GVariant *
+tandem_plugin_call (TandemPlugin *self, const char *method, GVariant *args, GError **error)
+{
+  TandemPluginClass *klass = TANDEM_PLUGIN_GET_CLASS (self);
+  GVariant *result;
+
+  if (klass->call == NULL)
+    {
+      g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD, "%s has no methods", klass->name);
+      return NULL;
+    }
+  result = klass->call (self, method, args, error);
+  if (result == NULL && (error == NULL || *error == NULL))
+    result = tandem_plugin_empty_result ();
+  return result != NULL ? g_variant_ref_sink (result) : NULL;
+}
+
+gboolean
+tandem_plugin_args_lookup (GVariant *args, const char *key, const char *format, ...)
+{
+  va_list ap;
+  g_autoptr(GVariant) value = NULL;
+
+  if (args == NULL)
+    return FALSE;
+  value = g_variant_lookup_value (args, key, NULL);
+  if (value == NULL || !g_variant_check_format_string (value, format, FALSE))
+    return FALSE;
+  va_start (ap, format);
+  g_variant_get_va (value, format, NULL, &ap);
+  va_end (ap);
+  return TRUE;
+}
+
+GVariant *
+tandem_plugin_empty_result (void)
+{
+  GVariantBuilder builder;
+
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  return g_variant_builder_end (&builder);
 }

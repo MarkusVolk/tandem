@@ -3,7 +3,6 @@
 #include "../input.h"
 #include "../plugin.h"
 
-#include <adwaita.h>
 
 #define SCROLL_FACTOR 0.1
 
@@ -107,24 +106,16 @@ mousepad_disconnected (TandemPlugin *plugin)
   tandem_input_release ();
 }
 
-static GtkWidget *
-mousepad_create_group (TandemPlugin *plugin)
+static GVariant *
+mousepad_get_state (TandemPlugin *plugin)
 {
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *row = adw_action_row_new ();
-  g_autofree char *subtitle = NULL;
+  GVariantBuilder builder;
 
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Remote input");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "Backend");
-  if (tandem_input_available ())
-    subtitle = g_strdup_printf ("%s, keyboard %s, pointer %s", tandem_input_backend_name (),
-                                tandem_input_has_keyboard () ? "yes" : "no",
-                                tandem_input_has_pointer () ? "yes" : "no");
-  else
-    subtitle = g_strdup ("No input backend available");
-  adw_action_row_set_subtitle (ADW_ACTION_ROW (row), subtitle);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), row);
-  return group;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "backend", g_variant_new_string (tandem_input_backend_name ()));
+  g_variant_builder_add (&builder, "{sv}", "keyboard", g_variant_new_boolean (tandem_input_has_keyboard ()));
+  g_variant_builder_add (&builder, "{sv}", "pointer", g_variant_new_boolean (tandem_input_has_pointer ()));
+  return g_variant_builder_end (&builder);
 }
 
 static void
@@ -139,7 +130,7 @@ tandem_mousepad_plugin_class_init (TandemMousepadPluginClass *klass)
   plugin_class->handle_packet = mousepad_handle_packet;
   plugin_class->connected = mousepad_connected;
   plugin_class->disconnected = mousepad_disconnected;
-  plugin_class->create_group = mousepad_create_group;
+  plugin_class->get_state = mousepad_get_state;
 }
 
 static void

@@ -2,7 +2,7 @@
 Name=Tandem
 GenericName=Phone Integration
 Comment=Connect your phone with the KDE Connect protocol
-Exec=tandem show
+Exec=tandem-gtk
 Icon=@APP_ID@
 Terminal=false
 Type=Application

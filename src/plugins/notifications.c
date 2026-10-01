@@ -4,7 +4,7 @@
 #include "../plugin.h"
 #include "../transfer.h"
 
-#include <adwaita.h>
+#include "../frontend.h"
 #include <glib/gstdio.h>
 #include <stdlib.h>
 
@@ -85,31 +85,12 @@ send_action (TandemPlugin *plugin, const char *id, const char *action)
 }
 
 static void
-reply_response_cb (AdwAlertDialog *dialog, const char *response, gpointer user_data)
-{
-  RemoteNotification *n = user_data;
-  GtkWidget *entry = adw_alert_dialog_get_extra_child (dialog);
-  const char *text = gtk_editable_get_text (GTK_EDITABLE (entry));
-
-  if (g_str_equal (response, "send") && *text != '\0' && n->reply_id != NULL)
-    send_reply (TANDEM_PLUGIN (n->plugin), n->reply_id, text);
-}
-
-static void
 open_reply_dialog (RemoteNotification *n)
 {
-  g_autofree char *heading = g_strdup_printf ("Reply to %s", n->app_name);
-  AdwDialog *dialog = adw_alert_dialog_new (heading, n->title);
-  GtkWidget *entry = gtk_entry_new ();
-  GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (g_application_get_default ()));
+  TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (n->plugin));
 
-  gtk_entry_set_placeholder_text (GTK_ENTRY (entry), "Message");
-  adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), entry);
-  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", "Cancel", "send", "Send", NULL);
-  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "send", ADW_RESPONSE_SUGGESTED);
-  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "send");
-  g_signal_connect (dialog, "response", G_CALLBACK (reply_response_cb), n);
-  adw_dialog_present (dialog, window != NULL ? GTK_WIDGET (window) : NULL);
+  tandem_frontend_action ("reply", g_variant_new ("(sss)", tandem_device_get_id (device), n->id,
+                                                   n->title != NULL ? n->title : ""));
 }
 
 static void
@@ -389,76 +370,60 @@ tandem_notifications_plugin_dismiss (TandemPlugin *plugin, const char *id)
   tandem_plugin_changed (plugin);
 }
 
-static void
-dismiss_clicked_cb (GtkButton *button, gpointer user_data)
-{
-  tandem_notifications_plugin_dismiss (TANDEM_PLUGIN (user_data), g_object_get_data (G_OBJECT (button), "id"));
-}
-
-static void
-fill_group (TandemPlugin *plugin, GtkWidget *group)
+static GVariant *
+notifications_get_state (TandemPlugin *plugin)
 {
   TandemNotificationsPlugin *self = TANDEM_NOTIFICATIONS_PLUGIN (plugin);
-  GtkWidget *listbox = g_object_get_data (G_OBJECT (group), "rows");
-  GtkWidget *child;
+  GVariantBuilder builder;
+  GVariantBuilder list;
   GHashTableIter iter;
   gpointer value;
-  guint count = 0;
 
-  if (listbox == NULL)
-    {
-      listbox = gtk_list_box_new ();
-      gtk_list_box_set_selection_mode (GTK_LIST_BOX (listbox), GTK_SELECTION_NONE);
-      gtk_widget_add_css_class (listbox, "boxed-list");
-      g_object_set_data (G_OBJECT (group), "rows", listbox);
-      adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), listbox);
-    }
-  while ((child = gtk_widget_get_first_child (listbox)) != NULL)
-    gtk_list_box_remove (GTK_LIST_BOX (listbox), child);
-
+  g_variant_builder_init (&list, G_VARIANT_TYPE ("aa{sv}"));
   g_hash_table_iter_init (&iter, self->notifications);
   while (g_hash_table_iter_next (&iter, NULL, &value))
     {
       RemoteNotification *n = value;
-      GtkWidget *row = adw_action_row_new ();
-      GtkWidget *dismiss = gtk_button_new_from_icon_name ("window-close-symbolic");
-      g_autofree char *subtitle = g_strdup_printf ("%s · %s", n->app_name, n->text);
+      GVariantBuilder item;
 
-      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), n->title);
-      adw_action_row_set_subtitle (ADW_ACTION_ROW (row), subtitle);
-      adw_action_row_set_subtitle_lines (ADW_ACTION_ROW (row), 2);
-      gtk_widget_set_valign (dismiss, GTK_ALIGN_CENTER);
-      gtk_widget_add_css_class (dismiss, "flat");
-      g_object_set_data_full (G_OBJECT (dismiss), "id", g_strdup (n->id), g_free);
-      g_signal_connect_object (dismiss, "clicked", G_CALLBACK (dismiss_clicked_cb), plugin, 0);
-      adw_action_row_add_suffix (ADW_ACTION_ROW (row), dismiss);
-      gtk_list_box_append (GTK_LIST_BOX (listbox), row);
-      count++;
+      g_variant_builder_init (&item, G_VARIANT_TYPE ("a{sv}"));
+      g_variant_builder_add (&item, "{sv}", "id", g_variant_new_string (n->id));
+      g_variant_builder_add (&item, "{sv}", "app", g_variant_new_string (n->app_name != NULL ? n->app_name : ""));
+      g_variant_builder_add (&item, "{sv}", "title", g_variant_new_string (n->title != NULL ? n->title : ""));
+      g_variant_builder_add (&item, "{sv}", "text", g_variant_new_string (n->text != NULL ? n->text : ""));
+      g_variant_builder_add (&item, "{sv}", "clearable", g_variant_new_boolean (n->clearable));
+      g_variant_builder_add (&item, "{sv}", "replyable", g_variant_new_boolean (n->reply_id != NULL));
+      g_variant_builder_add (&item, "{sv}", "actions",
+                             g_variant_new_strv ((const char *const *) n->actions, n->actions != NULL ? -1 : 0));
+      g_variant_builder_add (&list, "a{sv}", &item);
     }
-  if (count == 0)
-    {
-      GtkWidget *row = adw_action_row_new ();
-
-      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "No notifications");
-      gtk_list_box_append (GTK_LIST_BOX (listbox), row);
-    }
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "notifications", g_variant_builder_end (&list));
+  return g_variant_builder_end (&builder);
 }
 
-static void
-notifications_changed_cb (TandemPlugin *plugin, gpointer user_data)
+static GVariant *
+notifications_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
 {
-  fill_group (plugin, GTK_WIDGET (user_data));
-}
+  TandemNotificationsPlugin *self = TANDEM_NOTIFICATIONS_PLUGIN (plugin);
+  const char *id = NULL;
+  const char *text = NULL;
+  const char *action = NULL;
+  RemoteNotification *n;
 
-static GtkWidget *
-notifications_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Notifications");
-  fill_group (plugin, group);
-  g_signal_connect_object (plugin, "changed", G_CALLBACK (notifications_changed_cb), group, 0);
-  return group;
+  tandem_plugin_args_lookup (args, "id", "&s", &id);
+  tandem_plugin_args_lookup (args, "text", "&s", &text);
+  tandem_plugin_args_lookup (args, "action", "&s", &action);
+  n = id != NULL ? g_hash_table_lookup (self->notifications, id) : NULL;
+  if (g_str_equal (method, "dismiss") && id != NULL)
+    tandem_notifications_plugin_dismiss (plugin, id);
+  else if (g_str_equal (method, "reply") && n != NULL && n->reply_id != NULL && text != NULL)
+    send_reply (plugin, n->reply_id, text);
+  else if (g_str_equal (method, "action") && n != NULL && action != NULL)
+    send_action (plugin, n->id, action);
+  else
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "Bad call %s", method);
+  return NULL;
 }
 
 static void
@@ -496,7 +461,8 @@ tandem_notifications_plugin_class_init (TandemNotificationsPluginClass *klass)
   plugin_class->handle_packet = notifications_handle_packet;
   plugin_class->connected = notifications_connected;
   plugin_class->disconnected = notifications_disconnected;
-  plugin_class->create_group = notifications_create_group;
+  plugin_class->get_state = notifications_get_state;
+  plugin_class->call = notifications_call;
 }
 
 static void

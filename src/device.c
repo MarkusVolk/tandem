@@ -38,6 +38,7 @@ enum {
   PAIR_REQUEST,
   PAIR_FAILED,
   PLUGINS_CHANGED,
+  PLUGIN_CHANGED,
   N_SIGNALS
 };
 
@@ -46,6 +47,7 @@ static guint signals[N_SIGNALS];
 G_DEFINE_FINAL_TYPE (TandemDevice, tandem_device, G_TYPE_OBJECT)
 
 static void load_plugins (TandemDevice *self);
+static void plugin_changed_cb (TandemPlugin *plugin, gpointer user_data);
 static void unload_plugins (TandemDevice *self);
 
 static void
@@ -96,6 +98,8 @@ tandem_device_class_init (TandemDeviceClass *klass)
                                         G_TYPE_NONE, 0);
   signals[PAIR_FAILED] = g_signal_new ("pair-failed", TANDEM_TYPE_DEVICE, G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                        G_TYPE_NONE, 1, G_TYPE_STRING);
+  signals[PLUGIN_CHANGED] = g_signal_new ("plugin-changed", TANDEM_TYPE_DEVICE, G_SIGNAL_RUN_LAST, 0,
+                                          NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_STRING);
   signals[PLUGINS_CHANGED] = g_signal_new ("plugins-changed", TANDEM_TYPE_DEVICE, G_SIGNAL_RUN_LAST, 0,
                                            NULL, NULL, NULL, G_TYPE_NONE, 0);
 }
@@ -549,12 +553,21 @@ unload_plugins (TandemDevice *self)
       TandemPlugin *plugin = g_ptr_array_index (self->plugins, i);
       TandemPluginClass *klass = TANDEM_PLUGIN_GET_CLASS (plugin);
 
+      g_signal_handlers_disconnect_by_func (plugin, plugin_changed_cb, self);
       if (tandem_device_is_reachable (self) && klass->disconnected != NULL)
         klass->disconnected (plugin);
       g_object_run_dispose (G_OBJECT (plugin));
     }
   g_ptr_array_set_size (self->plugins, 0);
   g_signal_emit (self, signals[PLUGINS_CHANGED], 0);
+}
+
+static void
+plugin_changed_cb (TandemPlugin *plugin, gpointer user_data)
+{
+  TandemDevice *self = user_data;
+
+  g_signal_emit (self, signals[PLUGIN_CHANGED], 0, tandem_plugin_get_name (plugin));
 }
 
 static void
@@ -587,6 +600,7 @@ load_plugins (TandemDevice *self)
       if (!tandem_plugin_type_supports (type, self))
         continue;
       plugin = g_object_new (type, "device", self, NULL);
+      g_signal_connect (plugin, "changed", G_CALLBACK (plugin_changed_cb), self);
       g_ptr_array_add (self->plugins, plugin);
       klass = TANDEM_PLUGIN_GET_CLASS (plugin);
       if (klass->connected != NULL)

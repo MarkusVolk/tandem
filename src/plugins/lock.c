@@ -2,7 +2,6 @@
 #include "../device.h"
 #include "../plugin.h"
 
-#include <adwaita.h>
 
 #define TANDEM_TYPE_LOCK_PLUGIN (tandem_lock_plugin_get_type ())
 G_DECLARE_FINAL_TYPE (TandemLockPlugin, tandem_lock_plugin, TANDEM, LOCK_PLUGIN, TandemPlugin)
@@ -119,38 +118,29 @@ tandem_lock_plugin_set_remote (TandemPlugin *plugin, gboolean locked)
   tandem_plugin_send (plugin, packet);
 }
 
-static void
-lock_switch_cb (GObject *row, GParamSpec *pspec, gpointer user_data)
+static GVariant *
+lock_get_state (TandemPlugin *plugin)
 {
-  TandemLockPlugin *self = TANDEM_LOCK_PLUGIN (user_data);
-  gboolean active = adw_switch_row_get_active (ADW_SWITCH_ROW (row));
+  GVariantBuilder builder;
 
-  if (active != self->remote_locked)
-    tandem_lock_plugin_set_remote (TANDEM_PLUGIN (self), active);
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "locked", g_variant_new_boolean (TANDEM_LOCK_PLUGIN (plugin)->remote_locked));
+  return g_variant_builder_end (&builder);
 }
 
-static void
-lock_changed_cb (TandemPlugin *plugin, gpointer user_data)
+static GVariant *
+lock_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
 {
-  TandemLockPlugin *self = TANDEM_LOCK_PLUGIN (plugin);
+  gboolean locked = TRUE;
 
-  if (adw_switch_row_get_active (ADW_SWITCH_ROW (user_data)) != self->remote_locked)
-    adw_switch_row_set_active (ADW_SWITCH_ROW (user_data), self->remote_locked);
-}
-
-static GtkWidget *
-lock_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *row = adw_switch_row_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Lock");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "Device locked");
-  adw_switch_row_set_active (ADW_SWITCH_ROW (row), TANDEM_LOCK_PLUGIN (plugin)->remote_locked);
-  g_signal_connect_object (row, "notify::active", G_CALLBACK (lock_switch_cb), plugin, 0);
-  g_signal_connect_object (plugin, "changed", G_CALLBACK (lock_changed_cb), row, 0);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), row);
-  return group;
+  if (g_str_equal (method, "lock"))
+    {
+      tandem_plugin_args_lookup (args, "locked", "b", &locked);
+      tandem_lock_plugin_set_remote (plugin, locked);
+      return NULL;
+    }
+  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD, "Unknown method %s", method);
+  return NULL;
 }
 
 static void
@@ -176,7 +166,8 @@ tandem_lock_plugin_class_init (TandemLockPluginClass *klass)
   plugin_class->outgoing = lock_outgoing;
   plugin_class->handle_packet = lock_handle_packet;
   plugin_class->connected = lock_connected;
-  plugin_class->create_group = lock_create_group;
+  plugin_class->get_state = lock_get_state;
+  plugin_class->call = lock_call;
 }
 
 static void

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
-#include <adwaita.h>
+#include <gio/gio.h>
 
 #include "config.h"
 #include "manager.h"
@@ -9,7 +9,7 @@
 G_BEGIN_DECLS
 
 #define TANDEM_TYPE_APP (tandem_app_get_type ())
-G_DECLARE_FINAL_TYPE (TandemApp, tandem_app, TANDEM, APP, AdwApplication)
+G_DECLARE_FINAL_TYPE (TandemApp, tandem_app, TANDEM, APP, GApplication)
 
 TandemApp     *tandem_app_new              (void);
 TandemConfig  *tandem_app_get_config       (TandemApp *self);

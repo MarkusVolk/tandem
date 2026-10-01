@@ -1,4 +1,4 @@
-tandem_sources = files(
+daemon_sources = files(
   'main.c',
   'app.c',
   'config.c',
@@ -14,16 +14,17 @@ tandem_sources = files(
   'notify.c',
   'transfer.c',
   'sni.c',
+  'dbusmenu.c',
+  'mdns.c',
+  'frontend.c',
   'mpris-watch.c',
-  'pulse.c',
   'input.c',
-  'input-wlr.c',
   'input-portal.c',
   'input-uinput.c',
   'vcard.c',
   'clipboard.c',
-  'dbusmenu.c',
-  'mdns.c',
+  'dbus-api.c',
+  'smoke.c',
   'plugins/ping.c',
   'plugins/battery.c',
   'plugins/connectivity.c',
@@ -33,7 +34,6 @@ tandem_sources = files(
   'plugins/notifications.c',
   'plugins/share.c',
   'plugins/mpriscontrol.c',
-  'plugins/systemvolume.c',
   'plugins/mprisremote.c',
   'plugins/mousepad.c',
   'plugins/presenter.c',
@@ -43,34 +43,32 @@ tandem_sources = files(
   'plugins/clipboard.c',
   'plugins/sendnotifications.c',
   'plugins/remoteinput.c',
-  'ui/sms-page.c',
-  'ui/preferences.c',
-  'dbus-api.c',
-  'cli.c',
-  'smoke.c',
-  'ui/window.c',
-  'ui/device-page.c',
 )
 
-tandem_deps = [
-  glib_dep,
-  gio_dep,
-  gio_unix_dep,
-  json_dep,
-  gtk_dep,
-  adw_dep,
-  gnutls_dep,
-  pulse_dep,
-  wayland_dep,
-  xkb_dep,
-  gst_dep,
-  m_dep,
-  protocols_dep,
-]
+daemon_deps = [glib_dep, gio_dep, gio_unix_dep, json_dep, gnutls_dep, xkb_dep, m_dep]
+
+if pulse_dep.found()
+  daemon_sources += files('pulse.c', 'plugins/systemvolume.c')
+  daemon_deps += pulse_dep
+endif
+if gst_dep.found()
+  daemon_deps += gst_dep
+endif
+if wayland_dep.found()
+  daemon_sources += files('wayland.c', 'input-wlr.c')
+  daemon_deps += [wayland_dep, protocols_dep]
+endif
+
+executable('tandemd',
+  daemon_sources,
+  dependencies: daemon_deps,
+  include_directories: [config_inc, include_directories('.')],
+  install: true,
+)
 
 executable('tandem',
-  tandem_sources,
-  dependencies: tandem_deps,
+  files('cli-main.c', 'cli.c', 'util.c', 'frontend.c'),
+  dependencies: [glib_dep, gio_dep, gio_unix_dep],
   include_directories: [config_inc, include_directories('.')],
   install: true,
 )

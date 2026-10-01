@@ -3,8 +3,7 @@
 #include "device.h"
 #include "plugins/plugins.h"
 #include "clipboard.h"
-
-#include <gtk/gtk.h>
+#include "frontend.h"
 
 #define MENU_IFACE "com.canonical.dbusmenu"
 
@@ -244,17 +243,6 @@ layout_for (Item *item, int depth)
 }
 
 static void
-files_chosen_cb (GObject *source, GAsyncResult *result, gpointer user_data)
-{
-  g_autoptr(TandemDevice) device = user_data;
-  g_autoptr(GListModel) files = gtk_file_dialog_open_multiple_finish (GTK_FILE_DIALOG (source), result, NULL);
-  TandemPlugin *plugin = tandem_device_get_plugin (device, "share");
-
-  if (files != NULL && plugin != NULL)
-    tandem_share_plugin_send_files (plugin, files);
-}
-
-static void
 activate_item (TandemDbusMenu *self, Item *item)
 {
   TandemPlugin *plugin;
@@ -276,12 +264,7 @@ activate_item (TandemDbusMenu *self, Item *item)
         tandem_findmyphone_plugin_ring (plugin);
       break;
     case ACTION_SHARE:
-      {
-        g_autoptr(GtkFileDialog) dialog = gtk_file_dialog_new ();
-
-        gtk_file_dialog_set_title (dialog, "Send files");
-        gtk_file_dialog_open_multiple (dialog, NULL, NULL, files_chosen_cb, g_object_ref (item->device));
-      }
+      tandem_frontend_action ("share", g_variant_new_string (tandem_device_get_id (item->device)));
       break;
     case ACTION_CLIPBOARD:
       if ((plugin = tandem_device_get_plugin (item->device, "clipboard")) != NULL)

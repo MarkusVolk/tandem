@@ -1,0 +1,4 @@
+option('gui', type : 'feature', value : 'auto', description : 'Build the GTK 4 frontend')
+option('pulse', type : 'feature', value : 'auto', description : 'System volume through libpulse')
+option('gstreamer', type : 'feature', value : 'auto', description : 'Ring tone playback through GStreamer')
+option('wayland', type : 'feature', value : 'auto', description : 'Remote input and clipboard through Wayland protocols')

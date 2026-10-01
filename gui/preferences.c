@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "../app.h"
-#include "../config.h"
+#include "gui.h"
 #include "tandem-build.h"
 
 #include <adwaita.h>
@@ -78,9 +77,9 @@ combo_row (GSettings *settings, const char *key, const char *title, const char *
 }
 
 GtkWidget *
-tandem_preferences_dialog_new (TandemApp *app)
+tandem_gui_preferences_dialog_new (void)
 {
-  GSettings *settings = tandem_config_get_settings (tandem_app_get_config (app));
+  g_autoptr(GSettings) settings = g_settings_new ("de.flk.Tandem");
   AdwDialog *dialog = adw_preferences_dialog_new ();
   GtkWidget *page = adw_preferences_page_new ();
   GtkWidget *identity = adw_preferences_group_new ();
@@ -95,7 +94,8 @@ tandem_preferences_dialog_new (TandemApp *app)
   static const char *const type_labels[] = { "Desktop", "Laptop", NULL };
   static const char *const backends[] = { "auto", "portal", "wlr", "uinput", NULL };
   static const char *const backend_labels[] = { "Automatic", "RemoteDesktop portal", "wlroots protocols", "uinput", NULL };
-  g_autofree char *id_text = g_strdup_printf ("Device id %s", tandem_config_get_device_id (tandem_app_get_config (app)));
+  g_autofree char *self_id = tandem_gui_daemon_self_id (tandem_gui_daemon_get ());
+  g_autofree char *id_text = g_strdup_printf ("Device id %s", self_id != NULL ? self_id : "unknown, tandemd not running");
 
   adw_dialog_set_title (ADW_DIALOG (dialog), "Preferences");
   adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (identity), "This device");
@@ -137,7 +137,7 @@ tandem_preferences_dialog_new (TandemApp *app)
 }
 
 void
-tandem_show_about_dialog (GtkWidget *parent)
+tandem_gui_show_about_dialog (GtkWidget *parent)
 {
   const char *developers[] = { "Markus Volk", NULL };
   AdwDialog *about = adw_about_dialog_new ();

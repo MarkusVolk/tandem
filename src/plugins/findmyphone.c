@@ -3,8 +3,10 @@
 #include "../notify.h"
 #include "../plugin.h"
 
-#include <adwaita.h>
+#include "tandem-build.h"
+#ifdef TANDEM_HAVE_GSTREAMER
 #include <gst/gst.h>
+#endif
 
 #define RING_SECONDS 60
 #define RING_SOUND "/usr/share/sounds/freedesktop/stereo/phone-incoming-call.oga"
@@ -16,7 +18,9 @@ struct _TandemFindmyphonePlugin
 {
   TandemPlugin parent_instance;
 
+#ifdef TANDEM_HAVE_GSTREAMER
   GstElement *player;
+#endif
   guint bus_watch;
   guint stop_id;
   guint32 notification_id;
@@ -31,11 +35,13 @@ stop_ringing (TandemFindmyphonePlugin *self)
 {
   g_clear_handle_id (&self->stop_id, g_source_remove);
   g_clear_handle_id (&self->bus_watch, g_source_remove);
+#ifdef TANDEM_HAVE_GSTREAMER
   if (self->player != NULL)
     {
       gst_element_set_state (self->player, GST_STATE_NULL);
       g_clear_pointer (&self->player, gst_object_unref);
     }
+#endif
   if (self->notification_id != 0)
     {
       tandem_notify_close (self->notification_id);
@@ -43,6 +49,7 @@ stop_ringing (TandemFindmyphonePlugin *self)
     }
 }
 
+#ifdef TANDEM_HAVE_GSTREAMER
 static gboolean
 bus_cb (GstBus *bus, GstMessage *message, gpointer user_data)
 {
@@ -67,6 +74,7 @@ bus_cb (GstBus *bus, GstMessage *message, gpointer user_data)
     }
   return G_SOURCE_CONTINUE;
 }
+#endif
 
 static gboolean
 stop_timeout_cb (gpointer user_data)
@@ -100,6 +108,7 @@ start_ringing (TandemFindmyphonePlugin *self)
   g_autoptr(TandemNotification) notification = tandem_notification_new (summary, "Ringing");
 
   stop_ringing (self);
+#ifdef TANDEM_HAVE_GSTREAMER
   if (g_file_test (RING_SOUND, G_FILE_TEST_EXISTS))
     {
       g_autofree char *uri = g_filename_to_uri (RING_SOUND, NULL, NULL);
@@ -116,6 +125,7 @@ start_ringing (TandemFindmyphonePlugin *self)
           gst_element_set_state (self->player, GST_STATE_PLAYING);
         }
     }
+#endif
   tandem_notification_set_icon (notification, "audio-volume-high-symbolic");
   tandem_notification_set_urgency (notification, 2);
   tandem_notification_set_resident (notification, TRUE);
@@ -139,24 +149,16 @@ tandem_findmyphone_plugin_ring (TandemPlugin *plugin)
   tandem_plugin_send (plugin, packet);
 }
 
-static void
-ring_activated_cb (AdwButtonRow *row, gpointer user_data)
+static GVariant *
+findmyphone_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
 {
-  tandem_findmyphone_plugin_ring (TANDEM_PLUGIN (user_data));
-}
-
-static GtkWidget *
-findmyphone_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *row = adw_button_row_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Find my phone");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "Ring the device");
-  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (row), "audio-volume-high-symbolic");
-  g_signal_connect_object (row, "activated", G_CALLBACK (ring_activated_cb), plugin, 0);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), row);
-  return group;
+  if (g_str_equal (method, "ring"))
+    {
+      tandem_findmyphone_plugin_ring (plugin);
+      return NULL;
+    }
+  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD, "Unknown method %s", method);
+  return NULL;
 }
 
 static void
@@ -177,7 +179,7 @@ tandem_findmyphone_plugin_class_init (TandemFindmyphonePluginClass *klass)
   plugin_class->incoming = findmyphone_types;
   plugin_class->outgoing = findmyphone_types;
   plugin_class->handle_packet = findmyphone_handle_packet;
-  plugin_class->create_group = findmyphone_create_group;
+  plugin_class->call = findmyphone_call;
 }
 
 static void

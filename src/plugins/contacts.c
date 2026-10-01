@@ -4,7 +4,6 @@
 #include "../device.h"
 #include "../util.h"
 
-#include <adwaita.h>
 #include <glib/gstdio.h>
 #include <string.h>
 
@@ -20,7 +19,6 @@ struct _TandemContactsPlugin
   GPtrArray *pending_uids;
   guint pending_pos;
   gboolean syncing;
-  GtkWidget *count_row;
 };
 
 G_DEFINE_FINAL_TYPE (TandemContactsPlugin, tandem_contacts_plugin, TANDEM_TYPE_PLUGIN)
@@ -91,12 +89,7 @@ load_from_disk (TandemContactsPlugin *self)
 static void
 update_count_row (TandemContactsPlugin *self)
 {
-  g_autofree char *text = NULL;
-
-  if (self->count_row == NULL)
-    return;
-  text = g_strdup_printf ("%u contacts%s", g_hash_table_size (self->contacts), self->syncing ? ", syncing" : "");
-  adw_action_row_set_subtitle (ADW_ACTION_ROW (self->count_row), text);
+  tandem_plugin_changed (TANDEM_PLUGIN (self));
 }
 
 static void
@@ -110,7 +103,6 @@ request_next_batch (TandemContactsPlugin *self)
       g_clear_pointer (&self->pending_uids, g_ptr_array_unref);
       self->syncing = FALSE;
       update_count_row (self);
-      tandem_plugin_changed (TANDEM_PLUGIN (self));
       return;
     }
   for (guint i = 0; i < BATCH_SIZE && self->pending_pos < self->pending_uids->len; i++)
@@ -293,35 +285,28 @@ tandem_device_lookup_contact (TandemDevice *device, const char *number)
   return tandem_contacts_plugin_lookup_number (TANDEM_CONTACTS_PLUGIN (plugin), number);
 }
 
-static void
-sync_row_activated_cb (AdwActionRow *row, gpointer user_data)
-{
-  tandem_contacts_plugin_sync (TANDEM_CONTACTS_PLUGIN (user_data));
-}
-
-static void
-count_row_destroyed_cb (gpointer data, GObject *where_the_object_was)
-{
-  TANDEM_CONTACTS_PLUGIN (data)->count_row = NULL;
-}
-
-static GtkWidget *
-contacts_create_group (TandemPlugin *plugin)
+static GVariant *
+contacts_get_state (TandemPlugin *plugin)
 {
   TandemContactsPlugin *self = TANDEM_CONTACTS_PLUGIN (plugin);
-  GtkWidget *group = adw_preferences_group_new ();
+  GVariantBuilder builder;
 
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Contacts");
-  self->count_row = adw_action_row_new ();
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->count_row), "Synchronise now");
-  adw_action_row_set_activatable_widget (ADW_ACTION_ROW (self->count_row), NULL);
-  gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (self->count_row), TRUE);
-  gtk_widget_add_css_class (self->count_row, "property");
-  g_signal_connect (self->count_row, "activated", G_CALLBACK (sync_row_activated_cb), self);
-  g_object_weak_ref (G_OBJECT (self->count_row), count_row_destroyed_cb, self);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), self->count_row);
-  update_count_row (self);
-  return group;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "count", g_variant_new_uint32 (g_hash_table_size (self->contacts)));
+  g_variant_builder_add (&builder, "{sv}", "syncing", g_variant_new_boolean (self->syncing));
+  return g_variant_builder_end (&builder);
+}
+
+static GVariant *
+contacts_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
+{
+  if (g_str_equal (method, "sync"))
+    {
+      tandem_contacts_plugin_sync (TANDEM_CONTACTS_PLUGIN (plugin));
+      return NULL;
+    }
+  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD, "Unknown method %s", method);
+  return NULL;
 }
 
 static void
@@ -340,8 +325,6 @@ tandem_contacts_plugin_finalize (GObject *object)
 {
   TandemContactsPlugin *self = TANDEM_CONTACTS_PLUGIN (object);
 
-  if (self->count_row != NULL)
-    g_object_weak_unref (G_OBJECT (self->count_row), count_row_destroyed_cb, self);
   g_clear_pointer (&self->pending_uids, g_ptr_array_unref);
   g_hash_table_unref (self->by_number);
   g_hash_table_unref (self->contacts);
@@ -363,7 +346,8 @@ tandem_contacts_plugin_class_init (TandemContactsPluginClass *klass)
   plugin_class->outgoing = contacts_outgoing;
   plugin_class->handle_packet = contacts_handle_packet;
   plugin_class->connected = contacts_connected;
-  plugin_class->create_group = contacts_create_group;
+  plugin_class->get_state = contacts_get_state;
+  plugin_class->call = contacts_call;
 }
 
 static void

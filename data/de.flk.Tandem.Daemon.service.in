@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=@APP_ID@.Daemon
+Exec=@BINDIR@/tandemd
+SystemdService=tandem.service

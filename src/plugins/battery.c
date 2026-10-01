@@ -3,7 +3,6 @@
 #include "../notify.h"
 #include "../plugin.h"
 
-#include <adwaita.h>
 
 #define LOW_THRESHOLD 15
 
@@ -145,55 +144,16 @@ battery_connected (TandemPlugin *plugin)
     send_local_state (self, TRUE);
 }
 
-static void
-battery_row_update (GtkWidget *row, TandemPlugin *plugin)
+static GVariant *
+battery_get_state (TandemPlugin *plugin)
 {
   TandemBatteryPlugin *self = TANDEM_BATTERY_PLUGIN (plugin);
-  g_autofree char *text = NULL;
-  const char *icon;
+  GVariantBuilder builder;
 
-  if (self->charge < 0)
-    {
-      text = g_strdup ("Unknown");
-      icon = "battery-missing-symbolic";
-    }
-  else
-    {
-      text = g_strdup_printf ("%d %%%s", self->charge, self->charging ? ", charging" : "");
-      if (self->charging)
-        icon = "battery-good-charging-symbolic";
-      else if (self->charge < LOW_THRESHOLD)
-        icon = "battery-caution-symbolic";
-      else if (self->charge < 50)
-        icon = "battery-low-symbolic";
-      else
-        icon = "battery-good-symbolic";
-    }
-  adw_action_row_set_subtitle (ADW_ACTION_ROW (row), text);
-  gtk_image_set_from_icon_name (GTK_IMAGE (g_object_get_data (G_OBJECT (row), "icon")), icon);
-}
-
-static void
-battery_changed_cb (TandemPlugin *plugin, gpointer user_data)
-{
-  battery_row_update (GTK_WIDGET (user_data), plugin);
-}
-
-static GtkWidget *
-battery_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *row = adw_action_row_new ();
-  GtkWidget *icon = gtk_image_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Battery");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "Charge");
-  adw_action_row_add_prefix (ADW_ACTION_ROW (row), icon);
-  g_object_set_data (G_OBJECT (row), "icon", icon);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), row);
-  battery_row_update (row, plugin);
-  g_signal_connect_object (plugin, "changed", G_CALLBACK (battery_changed_cb), row, 0);
-  return group;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "charge", g_variant_new_int32 (self->charge));
+  g_variant_builder_add (&builder, "{sv}", "charging", g_variant_new_boolean (self->charging));
+  return g_variant_builder_end (&builder);
 }
 
 static void
@@ -219,7 +179,7 @@ tandem_battery_plugin_class_init (TandemBatteryPluginClass *klass)
   plugin_class->outgoing = battery_outgoing;
   plugin_class->handle_packet = battery_handle_packet;
   plugin_class->connected = battery_connected;
-  plugin_class->create_group = battery_create_group;
+  plugin_class->get_state = battery_get_state;
 }
 
 static void

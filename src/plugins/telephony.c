@@ -3,11 +3,13 @@
 #include "../mpris-watch.h"
 #include "../notify.h"
 #include "../plugin.h"
+#include "tandem-build.h"
+#ifdef TANDEM_HAVE_PULSE
 #include "../pulse.h"
+#endif
 #include "../util.h"
 #include "contacts.h"
 
-#include <adwaita.h>
 #include <glib/gstdio.h>
 
 #define TANDEM_TYPE_TELEPHONY_PLUGIN (tandem_telephony_plugin_get_type ())
@@ -34,7 +36,6 @@ pause_media (TandemTelephonyPlugin *self)
 {
   GSettings *settings = tandem_plugin_get_settings (TANDEM_PLUGIN (self));
   TandemMprisWatch *watch = tandem_mpris_watch_get ();
-  TandemPulse *pulse = tandem_pulse_get ();
   g_autoptr(GList) players = NULL;
 
   if (self->in_call)
@@ -56,8 +57,10 @@ pause_media (TandemTelephonyPlugin *self)
             }
         }
     }
-  if (g_settings_get_boolean (settings, "mute-on-call") && tandem_pulse_is_ready (pulse))
+#ifdef TANDEM_HAVE_PULSE
+  if (g_settings_get_boolean (settings, "mute-on-call") && tandem_pulse_is_ready (tandem_pulse_get ()))
     {
+      TandemPulse *pulse = tandem_pulse_get ();
       GPtrArray *sinks = tandem_pulse_get_sinks (pulse);
 
       for (guint i = 0; i < sinks->len; i++)
@@ -72,13 +75,13 @@ pause_media (TandemTelephonyPlugin *self)
             }
         }
     }
+#endif
 }
 
 static void
 resume_media (TandemTelephonyPlugin *self)
 {
   TandemMprisWatch *watch = tandem_mpris_watch_get ();
-  TandemPulse *pulse = tandem_pulse_get ();
 
   if (!self->in_call)
     return;
@@ -91,11 +94,11 @@ resume_media (TandemTelephonyPlugin *self)
         tandem_mpris_player_call (player, "Play", NULL);
     }
   g_ptr_array_set_size (self->paused_players, 0);
+#ifdef TANDEM_HAVE_PULSE
   if (self->muted_sink != NULL)
-    {
-      tandem_pulse_set_muted (pulse, self->muted_sink, FALSE);
-      g_clear_pointer (&self->muted_sink, g_free);
-    }
+    tandem_pulse_set_muted (tandem_pulse_get (), self->muted_sink, FALSE);
+#endif
+  g_clear_pointer (&self->muted_sink, g_free);
 }
 
 static void
@@ -222,24 +225,6 @@ telephony_disconnected (TandemPlugin *plugin)
   resume_media (TANDEM_TELEPHONY_PLUGIN (plugin));
 }
 
-static GtkWidget *
-telephony_create_group (TandemPlugin *plugin)
-{
-  GSettings *settings = tandem_plugin_get_settings (plugin);
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *pause_row = adw_switch_row_new ();
-  GtkWidget *mute_row = adw_switch_row_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Telephony");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (pause_row), "Pause media during calls");
-  g_settings_bind (settings, "pause-media-on-call", pause_row, "active", G_SETTINGS_BIND_DEFAULT);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), pause_row);
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (mute_row), "Mute the speakers during calls");
-  g_settings_bind (settings, "mute-on-call", mute_row, "active", G_SETTINGS_BIND_DEFAULT);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), mute_row);
-  return group;
-}
-
 static void
 tandem_telephony_plugin_finalize (GObject *object)
 {
@@ -263,7 +248,6 @@ tandem_telephony_plugin_class_init (TandemTelephonyPluginClass *klass)
   plugin_class->outgoing = telephony_outgoing;
   plugin_class->handle_packet = telephony_handle_packet;
   plugin_class->disconnected = telephony_disconnected;
-  plugin_class->create_group = telephony_create_group;
 }
 
 static void

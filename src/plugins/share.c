@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "../clipboard.h"
 #include "../device.h"
 #include "../notify.h"
 #include "../plugin.h"
 #include "../transfer.h"
 #include "../util.h"
 
-#include <adwaita.h>
 #include <string.h>
 
 #define TANDEM_TYPE_SHARE_PLUGIN (tandem_share_plugin_get_type ())
@@ -196,10 +196,8 @@ receive_text (TandemSharePlugin *self, const char *text)
   TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (self));
   g_autofree char *summary = g_strdup_printf ("Text from %s", tandem_device_get_name (device));
   g_autoptr(TandemNotification) notification = tandem_notification_new (summary, text);
-  GdkDisplay *display = gdk_display_get_default ();
 
-  if (display != NULL)
-    gdk_clipboard_set_text (gdk_display_get_clipboard (display), text);
+  tandem_clipboard_set_text (tandem_clipboard_get (), text);
   tandem_notification_set_icon (notification, "edit-paste-symbolic");
   tandem_notification_send (notification);
 }
@@ -305,97 +303,31 @@ tandem_share_plugin_send_files (TandemPlugin *plugin, GListModel *files)
     }
 }
 
-static void
-files_chosen_cb (GObject *source, GAsyncResult *result, gpointer user_data)
+static GVariant *
+share_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
 {
-  TandemPlugin *plugin = user_data;
-  g_autoptr(GListModel) files = gtk_file_dialog_open_multiple_finish (GTK_FILE_DIALOG (source), result, NULL);
+  const char *text = NULL;
+  g_autofree const char **paths = NULL;
 
-  if (files != NULL)
-    tandem_share_plugin_send_files (plugin, files);
-}
-
-static void
-send_files_activated_cb (AdwButtonRow *row, gpointer user_data)
-{
-  TandemPlugin *plugin = user_data;
-  g_autoptr(GtkFileDialog) dialog = gtk_file_dialog_new ();
-  GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (row));
-
-  gtk_file_dialog_set_title (dialog, "Send files");
-  gtk_file_dialog_open_multiple (dialog, GTK_IS_WINDOW (root) ? GTK_WINDOW (root) : NULL, NULL, files_chosen_cb, plugin);
-}
-
-static void
-clipboard_read_cb (GObject *source, GAsyncResult *result, gpointer user_data)
-{
-  TandemPlugin *plugin = user_data;
-  g_autofree char *text = gdk_clipboard_read_text_finish (GDK_CLIPBOARD (source), result, NULL);
-
-  if (text != NULL && *text != '\0')
+  if (g_str_equal (method, "files") && tandem_plugin_args_lookup (args, "paths", "^a&s", &paths))
     {
-      if (g_uri_is_valid (text, G_URI_FLAGS_NONE, NULL) && strstr (text, "://") != NULL)
-        tandem_share_plugin_send_url (plugin, text);
-      else
-        tandem_share_plugin_send_text (plugin, text);
+      g_autoptr(GListStore) files = g_list_store_new (G_TYPE_FILE);
+
+      for (const char **p = paths; *p != NULL; p++)
+        {
+          g_autoptr(GFile) file = g_file_new_for_commandline_arg (*p);
+
+          g_list_store_append (files, file);
+        }
+      tandem_share_plugin_send_files (plugin, G_LIST_MODEL (files));
     }
-}
-
-static void
-send_clipboard_activated_cb (AdwButtonRow *row, gpointer user_data)
-{
-  GdkClipboard *clipboard = gtk_widget_get_clipboard (GTK_WIDGET (row));
-
-  gdk_clipboard_read_text_async (clipboard, NULL, clipboard_read_cb, user_data);
-}
-
-static gboolean
-drop_cb (GtkDropTarget *target, const GValue *value, double x, double y, gpointer user_data)
-{
-  TandemPlugin *plugin = user_data;
-
-  if (G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
-    {
-      GSList *list = g_value_get_boxed (value);
-      g_autoptr(GListStore) store = g_list_store_new (G_TYPE_FILE);
-
-      for (GSList *l = list; l != NULL; l = l->next)
-        g_list_store_append (store, l->data);
-      tandem_share_plugin_send_files (plugin, G_LIST_MODEL (store));
-      return TRUE;
-    }
-  if (G_VALUE_HOLDS_STRING (value))
-    {
-      tandem_share_plugin_send_text (plugin, g_value_get_string (value));
-      return TRUE;
-    }
-  return FALSE;
-}
-
-static GtkWidget *
-share_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *files_row = adw_button_row_new ();
-  GtkWidget *clipboard_row = adw_button_row_new ();
-  GtkDropTarget *target = gtk_drop_target_new (G_TYPE_INVALID, GDK_ACTION_COPY);
-  GType types[] = { GDK_TYPE_FILE_LIST, G_TYPE_STRING };
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Share");
-  adw_preferences_group_set_description (ADW_PREFERENCES_GROUP (group), "Files dropped here are sent to the device");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (files_row), "Send files");
-  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (files_row), "document-send-symbolic");
-  g_signal_connect_object (files_row, "activated", G_CALLBACK (send_files_activated_cb), plugin, 0);
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (clipboard_row), "Send clipboard");
-  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (clipboard_row), "edit-paste-symbolic");
-  g_signal_connect_object (clipboard_row, "activated", G_CALLBACK (send_clipboard_activated_cb), plugin, 0);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), files_row);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), clipboard_row);
-
-  gtk_drop_target_set_gtypes (target, types, G_N_ELEMENTS (types));
-  g_signal_connect_object (target, "drop", G_CALLBACK (drop_cb), plugin, 0);
-  gtk_widget_add_controller (group, GTK_EVENT_CONTROLLER (target));
-  return group;
+  else if (g_str_equal (method, "text") && tandem_plugin_args_lookup (args, "text", "&s", &text))
+    tandem_share_plugin_send_text (plugin, text);
+  else if (g_str_equal (method, "url") && tandem_plugin_args_lookup (args, "url", "&s", &text))
+    tandem_share_plugin_send_url (plugin, text);
+  else
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "Bad call %s", method);
+  return NULL;
 }
 
 static void
@@ -408,7 +340,7 @@ tandem_share_plugin_class_init (TandemSharePluginClass *klass)
   plugin_class->incoming = share_types;
   plugin_class->outgoing = share_types;
   plugin_class->handle_packet = share_handle_packet;
-  plugin_class->create_group = share_create_group;
+  plugin_class->call = share_call;
 }
 
 static void

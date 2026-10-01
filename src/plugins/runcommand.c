@@ -2,7 +2,6 @@
 #include "../device.h"
 #include "../plugin.h"
 
-#include <adwaita.h>
 
 #define TANDEM_TYPE_RUNCOMMAND_PLUGIN (tandem_runcommand_plugin_get_type ())
 G_DECLARE_FINAL_TYPE (TandemRuncommandPlugin, tandem_runcommand_plugin, TANDEM, RUNCOMMAND_PLUGIN, TandemPlugin)
@@ -157,122 +156,35 @@ tandem_runcommand_plugin_remove (TandemPlugin *plugin, const char *key)
   tandem_plugin_changed (plugin);
 }
 
-typedef struct
+static GVariant *
+runcommand_get_state (TandemPlugin *plugin)
 {
-  TandemPlugin *plugin;
-  GtkWidget *name_row;
-  GtkWidget *command_row;
-} AddDialog;
+  GVariantBuilder builder;
 
-static void
-add_response_cb (AdwAlertDialog *dialog, const char *response, gpointer user_data)
-{
-  AddDialog *data = user_data;
-  const char *name = gtk_editable_get_text (GTK_EDITABLE (data->name_row));
-  const char *command = gtk_editable_get_text (GTK_EDITABLE (data->command_row));
-
-  if (g_str_equal (response, "add") && *name != '\0' && *command != '\0')
-    tandem_runcommand_plugin_add (data->plugin, name, command);
-  g_free (data);
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "commands", tandem_runcommand_plugin_list (plugin));
+  return g_variant_builder_end (&builder);
 }
 
-static void
-add_activated_cb (AdwButtonRow *row, gpointer user_data)
+static GVariant *
+runcommand_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
 {
-  TandemPlugin *plugin = user_data;
-  AdwDialog *dialog = adw_alert_dialog_new ("Add command", "The device will be able to run this command here.");
-  GtkWidget *group = adw_preferences_group_new ();
-  AddDialog *data = g_new0 (AddDialog, 1);
+  const char *key = NULL;
+  const char *name = NULL;
+  const char *command = NULL;
 
-  data->plugin = plugin;
-  data->name_row = adw_entry_row_new ();
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (data->name_row), "Name");
-  data->command_row = adw_entry_row_new ();
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (data->command_row), "Command");
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), data->name_row);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), data->command_row);
-  adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), group);
-  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", "Cancel", "add", "Add", NULL);
-  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "add", ADW_RESPONSE_SUGGESTED);
-  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "add");
-  g_signal_connect (dialog, "response", G_CALLBACK (add_response_cb), data);
-  adw_dialog_present (dialog, GTK_WIDGET (row));
-}
-
-static void
-remove_clicked_cb (GtkButton *button, gpointer user_data)
-{
-  TandemPlugin *plugin = user_data;
-  const char *key = g_object_get_data (G_OBJECT (button), "command-key");
-
-  tandem_runcommand_plugin_remove (plugin, key);
-}
-
-static void
-fill_group (TandemPlugin *plugin, GtkWidget *group)
-{
-  g_autoptr(JsonObject) commands = load_commands (plugin);
-  GList *members = json_object_get_members (commands);
-  GtkWidget *add_row;
-  GtkWidget *child;
-  GtkWidget *listbox = g_object_get_data (G_OBJECT (group), "rows");
-
-  if (listbox != NULL)
-    {
-      while ((child = gtk_widget_get_first_child (listbox)) != NULL)
-        gtk_list_box_remove (GTK_LIST_BOX (listbox), child);
-    }
+  tandem_plugin_args_lookup (args, "key", "&s", &key);
+  tandem_plugin_args_lookup (args, "name", "&s", &name);
+  tandem_plugin_args_lookup (args, "command", "&s", &command);
+  if (g_str_equal (method, "add") && name != NULL && command != NULL)
+    tandem_runcommand_plugin_add (plugin, name, command);
+  else if (g_str_equal (method, "remove") && key != NULL)
+    tandem_runcommand_plugin_remove (plugin, key);
+  else if (g_str_equal (method, "run") && key != NULL)
+    tandem_runcommand_plugin_run (plugin, key);
   else
-    {
-      listbox = gtk_list_box_new ();
-      gtk_list_box_set_selection_mode (GTK_LIST_BOX (listbox), GTK_SELECTION_NONE);
-      gtk_widget_add_css_class (listbox, "boxed-list");
-      g_object_set_data (G_OBJECT (group), "rows", listbox);
-      adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), listbox);
-    }
-
-  for (GList *l = members; l != NULL; l = l->next)
-    {
-      const char *key = l->data;
-      JsonObject *entry = json_object_get_object_member (commands, key);
-      GtkWidget *row = adw_action_row_new ();
-      GtkWidget *remove = gtk_button_new_from_icon_name ("user-trash-symbolic");
-
-      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row),
-                                     json_object_has_member (entry, "name") ? json_object_get_string_member (entry, "name") : key);
-      adw_action_row_set_subtitle (ADW_ACTION_ROW (row),
-                                   json_object_has_member (entry, "command") ? json_object_get_string_member (entry, "command") : "");
-      gtk_widget_set_valign (remove, GTK_ALIGN_CENTER);
-      gtk_widget_add_css_class (remove, "flat");
-      g_object_set_data_full (G_OBJECT (remove), "command-key", g_strdup (key), g_free);
-      g_signal_connect_object (remove, "clicked", G_CALLBACK (remove_clicked_cb), plugin, 0);
-      adw_action_row_add_suffix (ADW_ACTION_ROW (row), remove);
-      gtk_list_box_append (GTK_LIST_BOX (listbox), row);
-    }
-  g_list_free (members);
-
-  add_row = adw_button_row_new ();
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (add_row), "Add command");
-  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (add_row), "list-add-symbolic");
-  g_signal_connect_object (add_row, "activated", G_CALLBACK (add_activated_cb), plugin, 0);
-  gtk_list_box_append (GTK_LIST_BOX (listbox), add_row);
-}
-
-static void
-runcommand_changed_cb (TandemPlugin *plugin, gpointer user_data)
-{
-  fill_group (plugin, GTK_WIDGET (user_data));
-}
-
-static GtkWidget *
-runcommand_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Commands the device may run here");
-  fill_group (plugin, group);
-  g_signal_connect_object (plugin, "changed", G_CALLBACK (runcommand_changed_cb), group, 0);
-  return group;
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "Bad call %s", method);
+  return NULL;
 }
 
 static void
@@ -286,7 +198,8 @@ tandem_runcommand_plugin_class_init (TandemRuncommandPluginClass *klass)
   plugin_class->outgoing = runcommand_outgoing;
   plugin_class->handle_packet = runcommand_handle_packet;
   plugin_class->connected = runcommand_connected;
-  plugin_class->create_group = runcommand_create_group;
+  plugin_class->get_state = runcommand_get_state;
+  plugin_class->call = runcommand_call;
 }
 
 static void

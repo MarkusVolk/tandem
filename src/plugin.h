@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
-#include <gtk/gtk.h>
+#include <gio/gio.h>
 
 #include "packet.h"
 
@@ -24,7 +24,8 @@ struct _TandemPluginClass
   void       (*handle_packet) (TandemPlugin *self, TandemPacket *packet);
   void       (*connected)     (TandemPlugin *self);
   void       (*disconnected)  (TandemPlugin *self);
-  GtkWidget *(*create_group)  (TandemPlugin *self);
+  GVariant  *(*get_state)     (TandemPlugin *self);
+  GVariant  *(*call)          (TandemPlugin *self, const char *method, GVariant *args, GError **error);
 };
 
 typedef struct
@@ -40,6 +41,10 @@ const char   *tandem_plugin_get_title    (TandemPlugin *self);
 void          tandem_plugin_send         (TandemPlugin *self, TandemPacket *packet);
 gboolean      tandem_plugin_handles      (TandemPlugin *self, const char *type);
 void          tandem_plugin_changed      (TandemPlugin *self);
+GVariant     *tandem_plugin_get_state    (TandemPlugin *self);
+GVariant     *tandem_plugin_call         (TandemPlugin *self, const char *method, GVariant *args, GError **error);
+gboolean      tandem_plugin_args_lookup  (GVariant *args, const char *key, const char *format, ...);
+GVariant     *tandem_plugin_empty_result (void);
 
 const TandemPluginInfo *tandem_plugin_registry              (guint *n_plugins);
 void                    tandem_plugin_registry_capabilities (GStrv *incoming, GStrv *outgoing);

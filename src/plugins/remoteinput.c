@@ -2,7 +2,6 @@
 #include "../device.h"
 #include "../plugin.h"
 
-#include <adwaita.h>
 
 #define TANDEM_TYPE_REMOTEINPUT_PLUGIN (tandem_remoteinput_plugin_get_type ())
 G_DECLARE_FINAL_TYPE (TandemRemoteinputPlugin, tandem_remoteinput_plugin, TANDEM, REMOTEINPUT_PLUGIN, TandemPlugin)
@@ -46,61 +45,30 @@ remoteinput_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
   tandem_plugin_changed (plugin);
 }
 
-static void
-entry_activate_cb (GtkEntry *entry, gpointer user_data)
+static GVariant *
+remoteinput_get_state (TandemPlugin *plugin)
 {
-  const char *text = gtk_editable_get_text (GTK_EDITABLE (entry));
+  GVariantBuilder builder;
 
-  if (*text != '\0')
-    tandem_remoteinput_plugin_send_text (TANDEM_PLUGIN (user_data), text);
-  gtk_editable_set_text (GTK_EDITABLE (entry), "");
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "keyboard",
+                         g_variant_new_boolean (TANDEM_REMOTEINPUT_PLUGIN (plugin)->keyboard_ready));
+  return g_variant_builder_end (&builder);
 }
 
-static void
-special_clicked_cb (GtkButton *button, gpointer user_data)
+static GVariant *
+remoteinput_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
 {
-  tandem_remoteinput_plugin_send_special (TANDEM_PLUGIN (user_data),
-                                          GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "special")));
-}
+  const char *text = NULL;
+  gint32 key = 0;
 
-static GtkWidget *
-special_button (TandemPlugin *plugin, const char *label, int special)
-{
-  GtkWidget *button = gtk_button_new_with_label (label);
-
-  g_object_set_data (G_OBJECT (button), "special", GINT_TO_POINTER (special));
-  g_signal_connect_object (button, "clicked", G_CALLBACK (special_clicked_cb), plugin, 0);
-  gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
-  return button;
-}
-
-static GtkWidget *
-remoteinput_create_group (TandemPlugin *plugin)
-{
-  TandemRemoteinputPlugin *self = TANDEM_REMOTEINPUT_PLUGIN (plugin);
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *entry_row = adw_entry_row_new ();
-  GtkWidget *keys_row = adw_action_row_new ();
-  GtkWidget *keys_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Type on the device");
-  adw_preferences_group_set_description (ADW_PREFERENCES_GROUP (group),
-                                         self->keyboard_ready ? "The device accepts keyboard input"
-                                                              : "Open a text field on the device first");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (entry_row), "Text to send");
-  adw_entry_row_set_show_apply_button (ADW_ENTRY_ROW (entry_row), TRUE);
-  g_signal_connect_object (entry_row, "apply", G_CALLBACK (entry_activate_cb), plugin, 0);
-  g_signal_connect_object (entry_row, "entry-activated", G_CALLBACK (entry_activate_cb), plugin, 0);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), entry_row);
-
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (keys_row), "Keys");
-  gtk_box_append (GTK_BOX (keys_box), special_button (plugin, "Backspace", 1));
-  gtk_box_append (GTK_BOX (keys_box), special_button (plugin, "Enter", 12));
-  gtk_box_append (GTK_BOX (keys_box), special_button (plugin, "Tab", 2));
-  gtk_box_append (GTK_BOX (keys_box), special_button (plugin, "Esc", 14));
-  adw_action_row_add_suffix (ADW_ACTION_ROW (keys_row), keys_box);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), keys_row);
-  return group;
+  if (g_str_equal (method, "text") && tandem_plugin_args_lookup (args, "text", "&s", &text))
+    tandem_remoteinput_plugin_send_text (plugin, text);
+  else if (g_str_equal (method, "special") && tandem_plugin_args_lookup (args, "key", "i", &key))
+    tandem_remoteinput_plugin_send_special (plugin, key);
+  else
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "Bad call %s", method);
+  return NULL;
 }
 
 static void
@@ -113,7 +81,8 @@ tandem_remoteinput_plugin_class_init (TandemRemoteinputPluginClass *klass)
   plugin_class->incoming = remoteinput_incoming;
   plugin_class->outgoing = remoteinput_outgoing;
   plugin_class->handle_packet = remoteinput_handle_packet;
-  plugin_class->create_group = remoteinput_create_group;
+  plugin_class->get_state = remoteinput_get_state;
+  plugin_class->call = remoteinput_call;
 }
 
 static void

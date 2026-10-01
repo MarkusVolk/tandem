@@ -1,17 +1,22 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "clipboard.h"
 #include "util.h"
+#include "tandem-build.h"
+
+#ifdef TANDEM_HAVE_WAYLAND
+#include "wayland.h"
+#endif
 
 #include <fcntl.h>
-#include <gdk/gdk.h>
-#include <gdk/wayland/gdkwayland.h>
 #include <gio/gunixinputstream.h>
 #include <gio/gunixoutputstream.h>
 #include <string.h>
 #include <unistd.h>
 #include <wayland-client.h>
 
+#ifdef TANDEM_HAVE_WAYLAND
 #include "ext-data-control-v1-client-protocol.h"
+#endif
 
 #define TEXT_UTF8 "text/plain;charset=utf-8"
 #define TEXT_PLAIN "text/plain"
@@ -25,18 +30,16 @@ struct _TandemClipboard
   gint64 timestamp;
   const char *backend;
 
-  struct wl_display *display;
-  struct wl_registry *registry;
+#ifdef TANDEM_HAVE_WAYLAND
+  TandemWayland *wayland;
   struct ext_data_control_manager_v1 *manager;
   struct ext_data_control_device_v1 *device;
   struct ext_data_control_source_v1 *source;
   struct ext_data_control_offer_v1 *pending_offer;
   gboolean pending_has_text;
   gboolean pending_utf8;
+#endif
   char *source_text;
-
-  GdkClipboard *gdk_clipboard;
-  gboolean setting;
 };
 
 G_DEFINE_FINAL_TYPE (TandemClipboard, tandem_clipboard, G_TYPE_OBJECT)
@@ -55,6 +58,7 @@ store_text (TandemClipboard *self, const char *text)
   g_signal_emit (self, signals[CHANGED], 0, self->text);
 }
 
+#ifdef TANDEM_HAVE_WAYLAND
 static void
 offer_offer_cb (void *data, struct ext_data_control_offer_v1 *offer, const char *mime_type)
 {
@@ -144,7 +148,7 @@ device_selection_cb (void *data, struct ext_data_control_device_v1 *device, stru
       return;
     }
   ext_data_control_offer_v1_receive (offer, self->pending_utf8 ? TEXT_UTF8 : TEXT_PLAIN, fds[1]);
-  wl_display_flush (self->display);
+  tandem_wayland_flush (self->wayland);
   close (fds[1]);
   self->pending_offer = NULL;
 
@@ -217,87 +221,29 @@ static const struct ext_data_control_source_v1_listener source_listener = {
   .cancelled = source_cancelled_cb,
 };
 
-static void
-registry_global_cb (void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
-{
-  TandemClipboard *self = data;
-
-  if (g_str_equal (interface, ext_data_control_manager_v1_interface.name))
-    self->manager = wl_registry_bind (registry, name, &ext_data_control_manager_v1_interface, 1);
-}
-
-static void
-registry_global_remove_cb (void *data, struct wl_registry *registry, uint32_t name)
-{
-}
-
-static const struct wl_registry_listener registry_listener = {
-  .global = registry_global_cb,
-  .global_remove = registry_global_remove_cb,
-};
-
 static gboolean
 setup_wlr (TandemClipboard *self)
 {
-  GdkDisplay *display = gdk_display_get_default ();
-  GdkSeat *seat;
-  struct wl_seat *wl_seat;
+  TandemWayland *wayland = tandem_wayland_get ();
 
-  if (display == NULL || !GDK_IS_WAYLAND_DISPLAY (display))
+  if (wayland == NULL || wayland->seat == NULL || wayland->data_control_manager == NULL)
     return FALSE;
-  seat = gdk_display_get_default_seat (display);
-  wl_seat = seat != NULL ? gdk_wayland_seat_get_wl_seat (seat) : NULL;
-  self->display = gdk_wayland_display_get_wl_display (display);
-  if (self->display == NULL || wl_seat == NULL)
-    return FALSE;
-  self->registry = wl_display_get_registry (self->display);
-  wl_registry_add_listener (self->registry, &registry_listener, self);
-  wl_display_roundtrip (self->display);
-  if (self->manager == NULL)
-    return FALSE;
-  self->device = ext_data_control_manager_v1_get_data_device (self->manager, wl_seat);
+  self->wayland = wayland;
+  self->manager = wayland->data_control_manager;
+  self->device = ext_data_control_manager_v1_get_data_device (self->manager, wayland->seat);
   ext_data_control_device_v1_add_listener (self->device, &device_listener, self);
-  wl_display_flush (self->display);
+  tandem_wayland_flush (wayland);
   self->backend = "data-control";
   return TRUE;
 }
 
-static void
-gdk_read_cb (GObject *source, GAsyncResult *result, gpointer user_data)
+#else
+static gboolean
+setup_wlr (TandemClipboard *self)
 {
-  TandemClipboard *self = user_data;
-  g_autofree char *text = gdk_clipboard_read_text_finish (GDK_CLIPBOARD (source), result, NULL);
-
-  if (text != NULL)
-    store_text (self, text);
-  g_object_unref (self);
+  return FALSE;
 }
-
-static void
-gdk_changed_cb (GdkClipboard *clipboard, gpointer user_data)
-{
-  TandemClipboard *self = user_data;
-
-  if (self->setting)
-    return;
-  if (gdk_content_formats_contain_gtype (gdk_clipboard_get_formats (clipboard), G_TYPE_STRING))
-    gdk_clipboard_read_text_async (clipboard, NULL, gdk_read_cb, g_object_ref (self));
-}
-
-static void
-setup_gdk (TandemClipboard *self)
-{
-  GdkDisplay *display = gdk_display_get_default ();
-
-  if (display == NULL)
-    {
-      self->backend = "none";
-      return;
-    }
-  self->gdk_clipboard = gdk_display_get_clipboard (display);
-  g_signal_connect (self->gdk_clipboard, "changed", G_CALLBACK (gdk_changed_cb), self);
-  self->backend = "gdk";
-}
+#endif
 
 TandemClipboard *
 tandem_clipboard_get (void)
@@ -308,8 +254,12 @@ tandem_clipboard_get (void)
     {
       instance = g_object_new (TANDEM_TYPE_CLIPBOARD, NULL);
       if (!setup_wlr (instance))
-        setup_gdk (instance);
-      g_message ("clipboard through %s", instance->backend);
+        {
+          instance->backend = "none";
+          g_message ("clipboard: the compositor offers no ext-data-control, clipboard sync is off");
+        }
+      else
+        g_message ("clipboard through %s", instance->backend);
     }
   return instance;
 }
@@ -341,6 +291,7 @@ tandem_clipboard_set_text (TandemClipboard *self, const char *text)
   self->text = g_strdup (text);
   self->timestamp = tandem_now_ms ();
 
+#ifdef TANDEM_HAVE_WAYLAND
   if (self->device != NULL && self->manager != NULL)
     {
       g_free (self->source_text);
@@ -358,14 +309,9 @@ tandem_clipboard_set_text (TandemClipboard *self, const char *text)
       ext_data_control_source_v1_offer (self->source, "STRING");
       ext_data_control_source_v1_offer (self->source, "TEXT");
       ext_data_control_device_v1_set_selection (self->device, self->source);
-      wl_display_flush (self->display);
+      tandem_wayland_flush (self->wayland);
     }
-  else if (self->gdk_clipboard != NULL)
-    {
-      self->setting = TRUE;
-      gdk_clipboard_set_text (self->gdk_clipboard, text);
-      self->setting = FALSE;
-    }
+#endif
 }
 
 static void

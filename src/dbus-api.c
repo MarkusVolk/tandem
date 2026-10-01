@@ -66,6 +66,17 @@ static const char device_xml[] =
   "    <method name='ListNotifications'><arg type='a(ssss)' name='notifications' direction='out'/></method>"
   "    <method name='DismissNotification'><arg type='s' name='id' direction='in'/></method>"
   "    <method name='ListPlayers'><arg type='as' name='players' direction='out'/></method>"
+  "    <method name='GetPluginState'>"
+  "      <arg type='s' name='plugin' direction='in'/>"
+  "      <arg type='a{sv}' name='state' direction='out'/>"
+  "    </method>"
+  "    <method name='CallPlugin'>"
+  "      <arg type='s' name='plugin' direction='in'/>"
+  "      <arg type='s' name='method' direction='in'/>"
+  "      <arg type='a{sv}' name='args' direction='in'/>"
+  "      <arg type='a{sv}' name='result' direction='out'/>"
+  "    </method>"
+  "    <signal name='PluginChanged'><arg type='s' name='plugin'/></signal>"
   "  </interface>"
   "</node>";
 
@@ -366,6 +377,42 @@ device_method_call (GDBusConnection       *connection,
       g_variant_get (parameters, "(&s)", &id);
       tandem_notifications_plugin_dismiss (plugin, id);
     }
+  else if (g_str_equal (method_name, "GetPluginState"))
+    {
+      const char *name;
+      TandemPlugin *plugin;
+      g_autoptr(GVariant) state = NULL;
+
+      g_variant_get (parameters, "(&s)", &name);
+      plugin = require_plugin (device, name, invocation);
+      if (plugin == NULL)
+        return;
+      state = tandem_plugin_get_state (plugin);
+      g_dbus_method_invocation_return_value (invocation, g_variant_new_tuple (&state, 1));
+      return;
+    }
+  else if (g_str_equal (method_name, "CallPlugin"))
+    {
+      const char *name;
+      const char *method;
+      g_autoptr(GVariant) args = NULL;
+      g_autoptr(GVariant) result = NULL;
+      g_autoptr(GError) error = NULL;
+      TandemPlugin *plugin;
+
+      g_variant_get (parameters, "(&s&s@a{sv})", &name, &method, &args);
+      plugin = require_plugin (device, name, invocation);
+      if (plugin == NULL)
+        return;
+      result = tandem_plugin_call (plugin, method, args, &error);
+      if (result == NULL)
+        {
+          g_dbus_method_invocation_return_gerror (invocation, error);
+          return;
+        }
+      g_dbus_method_invocation_return_value (invocation, g_variant_new_tuple (&result, 1));
+      return;
+    }
   else if (g_str_equal (method_name, "ListPlayers"))
     {
       g_autoptr(GList) players = tandem_mpris_watch_list (tandem_mpris_watch_get ());
@@ -492,4 +539,15 @@ tandem_dbus_api_notify_device (const char *signal_name, const char *device_id)
     return;
   g_dbus_connection_emit_signal (api_connection, NULL, TANDEM_DBUS_PATH, TANDEM_DBUS_MANAGER_IFACE,
                                  signal_name, g_variant_new ("(s)", device_id), NULL);
+}
+
+void
+tandem_dbus_api_plugin_changed (TandemDevice *device, const char *plugin, gpointer user_data)
+{
+  g_autofree char *path = tandem_object_path_for_id (tandem_device_get_id (device));
+
+  if (api_connection == NULL || !g_hash_table_contains (device_registrations, path))
+    return;
+  g_dbus_connection_emit_signal (api_connection, NULL, path, TANDEM_DBUS_DEVICE_IFACE, "PluginChanged",
+                                 g_variant_new ("(s)", plugin), NULL);
 }

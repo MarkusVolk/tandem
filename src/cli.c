@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "cli.h"
-#include "config.h"
 #include "dbus-api.h"
+#include "frontend.h"
+#include "tandem-build.h"
 #include "util.h"
 
 #include <gio/gio.h>
@@ -15,7 +16,7 @@ usage (void)
   fprintf (stderr,
            "Usage: tandem [<command> [args]]\n"
            "\n"
-           "Without a command the window is opened.\n"
+           "Without a command the window of the installed frontend is opened.\n"
            "\n"
            "Commands:\n"
            "  list [--id-only]  devices known to the running service\n"
@@ -45,7 +46,7 @@ usage (void)
            "  players <dev>     list local media players\n"
            "  show              open the window\n"
            "  quit              stop the service\n"
-           "  --smoke-test      check the build and the host without a phone\n");
+           "  tandemd --smoke-test   check the build and the host without a phone\n");
 }
 
 static GDBusConnection *
@@ -75,11 +76,17 @@ static int
 cmd_my_id (void)
 {
   g_autoptr(GError) error = NULL;
-  g_autoptr(TandemConfig) config = tandem_config_new (NULL, &error);
+  g_autoptr(GDBusConnection) bus = session_bus (&error);
+  g_autoptr(GVariant) reply = NULL;
+  const char *id;
 
-  if (config == NULL)
+  if (bus == NULL)
     return fail (error);
-  printf ("%s\n", tandem_config_get_device_id (config));
+  reply = call_manager (bus, "SelfId", NULL, "(s)", &error);
+  if (reply == NULL)
+    return fail (error);
+  g_variant_get (reply, "(&s)", &id);
+  printf ("%s\n", id);
   return 0;
 }
 
@@ -330,10 +337,29 @@ cmd_device_print (const char *wanted, const char *method, GVariant *parameters)
   return 0;
 }
 
+static int
+cmd_show (void)
+{
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GDBusConnection) bus = session_bus (&error);
+  g_autoptr(GVariant) reply = NULL;
+  GVariantBuilder platform;
+
+  if (bus == NULL)
+    return fail (error);
+  g_variant_builder_init (&platform, G_VARIANT_TYPE ("a{sv}"));
+  reply = g_dbus_connection_call_sync (bus, TANDEM_APP_ID, "/de/flk/Tandem", "org.freedesktop.Application", "Activate",
+                                       g_variant_new ("(a{sv})", &platform), NULL, G_DBUS_CALL_FLAGS_NONE, 30000,
+                                       NULL, &error);
+  if (reply == NULL)
+    return fail (error);
+  return 0;
+}
+
 int
 tandem_cli_run (int argc, char **argv)
 {
-  const char *command = argv[1];
+  const char *command = argc > 1 ? argv[1] : "show";
 
   if (g_str_equal (command, "my-id"))
     return cmd_my_id ();
@@ -344,7 +370,7 @@ tandem_cli_run (int argc, char **argv)
   if (g_str_equal (command, "monitor"))
     return cmd_monitor ();
   if (g_str_equal (command, "show"))
-    return cmd_simple ("Show");
+    return cmd_show ();
   if (g_str_equal (command, "quit"))
     return cmd_simple ("Quit");
   if (argc > 2 && g_str_equal (command, "pair"))

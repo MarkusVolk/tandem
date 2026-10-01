@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "input.h"
 
-#include <gdk/gdk.h>
-#include <gdk/wayland/gdkwayland.h>
+#include "wayland.h"
+
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -22,11 +22,7 @@
 
 typedef struct
 {
-  struct wl_display *display;
-  struct wl_registry *registry;
-  struct wl_seat *seat;
-  struct zwp_virtual_keyboard_manager_v1 *keyboard_manager;
-  struct zwlr_virtual_pointer_manager_v1 *pointer_manager;
+  TandemWayland *wayland;
   struct zwp_virtual_keyboard_v1 *keyboard;
   struct zwlr_virtual_pointer_v1 *pointer;
   guint32 keysyms[MAX_KEYS];
@@ -34,47 +30,13 @@ typedef struct
   guint32 mods_depressed;
 } Wlr;
 
-static void
-registry_global_cb (void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
-{
-  Wlr *wlr = data;
-
-  if (g_str_equal (interface, zwp_virtual_keyboard_manager_v1_interface.name))
-    wlr->keyboard_manager = wl_registry_bind (registry, name, &zwp_virtual_keyboard_manager_v1_interface, 1);
-  else if (g_str_equal (interface, zwlr_virtual_pointer_manager_v1_interface.name))
-    wlr->pointer_manager = wl_registry_bind (registry, name, &zwlr_virtual_pointer_manager_v1_interface, MIN (version, 2));
-}
-
-static void
-registry_global_remove_cb (void *data, struct wl_registry *registry, uint32_t name)
-{
-}
-
-static const struct wl_registry_listener registry_listener = {
-  .global = registry_global_cb,
-  .global_remove = registry_global_remove_cb,
-};
-
 static gboolean
-probe (Wlr *wlr)
+probe (void)
 {
-  GdkDisplay *display = gdk_display_get_default ();
-  GdkSeat *seat;
+  TandemWayland *wayland = tandem_wayland_get ();
 
-  if (display == NULL || !GDK_IS_WAYLAND_DISPLAY (display))
-    return FALSE;
-  wlr->display = gdk_wayland_display_get_wl_display (display);
-  seat = gdk_display_get_default_seat (display);
-  wlr->seat = seat != NULL ? gdk_wayland_seat_get_wl_seat (seat) : NULL;
-  if (wlr->display == NULL || wlr->seat == NULL)
-    return FALSE;
-  if (wlr->registry == NULL)
-    {
-      wlr->registry = wl_display_get_registry (wlr->display);
-      wl_registry_add_listener (wlr->registry, &registry_listener, wlr);
-      wl_display_roundtrip (wlr->display);
-    }
-  return wlr->keyboard_manager != NULL || wlr->pointer_manager != NULL;
+  return wayland != NULL && wayland->seat != NULL &&
+         (wayland->virtual_keyboard_manager != NULL || wayland->virtual_pointer_manager != NULL);
 }
 
 static guint32
@@ -131,25 +93,25 @@ keycode_for (Wlr *wlr, guint32 keysym)
 static gboolean
 wlr_available (void)
 {
-  static Wlr probe_state;
-
-  return probe (&probe_state);
+  return probe ();
 }
 
 static gboolean
 wlr_open (TandemInputBackend *backend, GError **error)
 {
-  Wlr *wlr = g_new0 (Wlr, 1);
+  Wlr *wlr;
 
-  if (!probe (wlr))
+  if (!probe ())
     {
-      g_free (wlr);
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "No virtual input protocols on this compositor");
       return FALSE;
     }
-  if (wlr->keyboard_manager != NULL)
+  wlr = g_new0 (Wlr, 1);
+  wlr->wayland = tandem_wayland_get ();
+  if (wlr->wayland->virtual_keyboard_manager != NULL)
     {
-      wlr->keyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard (wlr->keyboard_manager, wlr->seat);
+      wlr->keyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard (wlr->wayland->virtual_keyboard_manager,
+                                                                               wlr->wayland->seat);
       wlr->keysyms[KEY_SHIFT_INDEX] = XKB_KEY_Shift_L;
       wlr->keysyms[KEY_CTRL_INDEX] = XKB_KEY_Control_L;
       wlr->keysyms[KEY_ALT_INDEX] = XKB_KEY_Alt_L;
@@ -157,12 +119,13 @@ wlr_open (TandemInputBackend *backend, GError **error)
       wlr->n_keys = 4;
       upload_keymap (wlr);
     }
-  if (wlr->pointer_manager != NULL)
-    wlr->pointer = zwlr_virtual_pointer_manager_v1_create_virtual_pointer (wlr->pointer_manager, wlr->seat);
+  if (wlr->wayland->virtual_pointer_manager != NULL)
+    wlr->pointer = zwlr_virtual_pointer_manager_v1_create_virtual_pointer (wlr->wayland->virtual_pointer_manager,
+                                                                           wlr->wayland->seat);
   backend->has_keyboard = wlr->keyboard != NULL;
   backend->has_pointer = wlr->pointer != NULL;
   backend->data = wlr;
-  wl_display_flush (wlr->display);
+  tandem_wayland_flush (wlr->wayland);
   return TRUE;
 }
 
@@ -175,10 +138,7 @@ wlr_close (TandemInputBackend *backend)
     return;
   g_clear_pointer (&wlr->keyboard, zwp_virtual_keyboard_v1_destroy);
   g_clear_pointer (&wlr->pointer, zwlr_virtual_pointer_v1_destroy);
-  g_clear_pointer (&wlr->keyboard_manager, zwp_virtual_keyboard_manager_v1_destroy);
-  g_clear_pointer (&wlr->pointer_manager, zwlr_virtual_pointer_manager_v1_destroy);
-  g_clear_pointer (&wlr->registry, wl_registry_destroy);
-  wl_display_flush (wlr->display);
+  tandem_wayland_flush (wlr->wayland);
   g_free (wlr);
   backend->data = NULL;
 }
@@ -257,7 +217,7 @@ wlr_flush (TandemInputBackend *backend)
   Wlr *wlr = backend->data;
 
   if (wlr != NULL)
-    wl_display_flush (wlr->display);
+    tandem_wayland_flush (wlr->wayland);
 }
 
 static TandemInputBackend wlr_backend = {

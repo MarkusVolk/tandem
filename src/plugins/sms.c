@@ -8,7 +8,6 @@
 #include "../vcard.h"
 #include "contacts.h"
 
-#include <adwaita.h>
 #include <string.h>
 
 #define MESSAGE_PAGE 50
@@ -352,6 +351,18 @@ handle_messages (TandemSmsPlugin *self, TandemPacket *packet)
     g_signal_emit (self, signals[THREAD_UPDATED], 0, key);
   if (list_changed)
     g_signal_emit (self, signals[THREADS_CHANGED], 0);
+  if (list_changed || g_hash_table_size (touched) > 0)
+    tandem_plugin_changed (TANDEM_PLUGIN (self));
+}
+
+static void
+open_path (const char *path)
+{
+  g_autofree char *uri = g_filename_to_uri (path, NULL, NULL);
+  g_autoptr(GError) error = NULL;
+
+  if (uri != NULL && !g_app_info_launch_default_for_uri (uri, NULL, &error))
+    g_warning ("sms: cannot open %s: %s", path, error->message);
 }
 
 static void
@@ -363,12 +374,7 @@ attachment_saved_cb (GObject *source, GAsyncResult *result, gpointer user_data)
   if (!tandem_transfer_download_to_file_finish (TANDEM_TRANSFER (source), result, &error))
     g_warning ("sms: attachment download failed: %s", error->message);
   else
-    {
-      g_autoptr(GFile) file = g_file_new_for_path (path);
-      g_autoptr(GtkFileLauncher) launcher = gtk_file_launcher_new (file);
-
-      gtk_file_launcher_launch (launcher, NULL, NULL, NULL, NULL);
-    }
+    open_path (path);
   g_object_unref (source);
 }
 
@@ -463,10 +469,7 @@ tandem_sms_plugin_request_attachment (TandemSmsPlugin *self, TandemSmsAttachment
 
   if (g_file_test (path, G_FILE_TEST_EXISTS))
     {
-      g_autoptr(GFile) file = g_file_new_for_path (path);
-      g_autoptr(GtkFileLauncher) launcher = gtk_file_launcher_new (file);
-
-      gtk_file_launcher_launch (launcher, NULL, NULL, NULL, NULL);
+      open_path (path);
       return;
     }
   packet = tandem_packet_new ("kdeconnect.sms.request_attachment");
@@ -487,31 +490,146 @@ sms_disconnected (TandemPlugin *plugin)
   TANDEM_SMS_PLUGIN (plugin)->requested = FALSE;
 }
 
-GtkWidget *tandem_sms_page_new (TandemSmsPlugin *plugin);
-
-static void
-messages_row_activated_cb (AdwActionRow *row, gpointer user_data)
+static GVariant *
+message_to_variant (TandemSmsMessage *message)
 {
-  TandemSmsPlugin *self = user_data;
-  GtkWidget *view = gtk_widget_get_ancestor (GTK_WIDGET (row), ADW_TYPE_NAVIGATION_VIEW);
+  GVariantBuilder item;
+  GVariantBuilder attachments;
+  GPtrArray *list = tandem_sms_message_get_attachments (message);
 
-  if (view != NULL)
-    adw_navigation_view_push (ADW_NAVIGATION_VIEW (view), ADW_NAVIGATION_PAGE (tandem_sms_page_new (self)));
+  g_variant_builder_init (&attachments, G_VARIANT_TYPE ("aa{sv}"));
+  for (guint i = 0; i < list->len; i++)
+    {
+      TandemSmsAttachment *a = g_ptr_array_index (list, i);
+      GVariantBuilder att;
+
+      g_variant_builder_init (&att, G_VARIANT_TYPE ("a{sv}"));
+      g_variant_builder_add (&att, "{sv}", "part_id", g_variant_new_int64 (a->part_id));
+      g_variant_builder_add (&att, "{sv}", "mime_type", g_variant_new_string (a->mime_type));
+      g_variant_builder_add (&att, "{sv}", "unique_identifier", g_variant_new_string (a->unique_identifier));
+      if (a->thumbnail != NULL)
+        g_variant_builder_add (&att, "{sv}", "thumbnail",
+                               g_variant_new_from_bytes (G_VARIANT_TYPE_BYTESTRING, a->thumbnail, TRUE));
+      g_variant_builder_add (&attachments, "a{sv}", &att);
+    }
+  g_variant_builder_init (&item, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&item, "{sv}", "id", g_variant_new_int64 (message->id));
+  g_variant_builder_add (&item, "{sv}", "thread", g_variant_new_int64 (message->thread_id));
+  g_variant_builder_add (&item, "{sv}", "body", g_variant_new_string (tandem_sms_message_get_body (message)));
+  g_variant_builder_add (&item, "{sv}", "date", g_variant_new_int64 (message->date));
+  g_variant_builder_add (&item, "{sv}", "outgoing", g_variant_new_boolean (tandem_sms_message_is_outgoing (message)));
+  g_variant_builder_add (&item, "{sv}", "read", g_variant_new_boolean (message->read));
+  g_variant_builder_add (&item, "{sv}", "sub_id", g_variant_new_int64 (message->sub_id));
+  g_variant_builder_add (&item, "{sv}", "addresses",
+                         g_variant_new_strv ((const char *const *) message->addresses, message->addresses != NULL ? -1 : 0));
+  g_variant_builder_add (&item, "{sv}", "attachments", g_variant_builder_end (&attachments));
+  return g_variant_builder_end (&item);
 }
 
-static GtkWidget *
-sms_create_group (TandemPlugin *plugin)
+static GVariant *
+sms_get_state (TandemPlugin *plugin)
 {
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *row = adw_action_row_new ();
+  TandemSmsPlugin *self = TANDEM_SMS_PLUGIN (plugin);
+  TandemDevice *device = tandem_plugin_get_device (plugin);
+  GVariantBuilder builder;
+  GVariantBuilder threads;
+  guint n = g_list_model_get_n_items (G_LIST_MODEL (self->threads));
 
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Messages");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "Open conversations");
-  adw_action_row_add_suffix (ADW_ACTION_ROW (row), gtk_image_new_from_icon_name ("go-next-symbolic"));
-  gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
-  g_signal_connect (row, "activated", G_CALLBACK (messages_row_activated_cb), plugin);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), row);
-  return group;
+  g_variant_builder_init (&threads, G_VARIANT_TYPE ("aa{sv}"));
+  for (guint i = 0; i < n; i++)
+    {
+      g_autoptr(TandemSmsThread) thread = g_list_model_get_item (G_LIST_MODEL (self->threads), i);
+      TandemSmsMessage *last = tandem_sms_thread_get_last (thread);
+      g_autofree char *title = tandem_sms_thread_get_title (thread, device);
+      GVariantBuilder item;
+
+      g_variant_builder_init (&item, G_VARIANT_TYPE ("a{sv}"));
+      g_variant_builder_add (&item, "{sv}", "id", g_variant_new_int64 (thread->id));
+      g_variant_builder_add (&item, "{sv}", "title", g_variant_new_string (title));
+      g_variant_builder_add (&item, "{sv}", "addresses",
+                             g_variant_new_strv ((const char *const *) thread->addresses, thread->addresses != NULL ? -1 : 0));
+      g_variant_builder_add (&item, "{sv}", "loaded", g_variant_new_boolean (thread->loaded));
+      if (last != NULL)
+        g_variant_builder_add (&item, "{sv}", "last", message_to_variant (last));
+      g_variant_builder_add (&threads, "a{sv}", &item);
+    }
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "threads", g_variant_builder_end (&threads));
+  return g_variant_builder_end (&builder);
+}
+
+static GVariant *
+sms_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
+{
+  TandemSmsPlugin *self = TANDEM_SMS_PLUGIN (plugin);
+  gint64 thread_id = 0;
+  TandemSmsThread *thread;
+
+  tandem_plugin_args_lookup (args, "thread", "x", &thread_id);
+  thread = thread_id != 0 ? find_thread (self, thread_id, NULL) : NULL;
+  if (g_str_equal (method, "threads"))
+    {
+      tandem_sms_plugin_request_threads (self);
+    }
+  else if (g_str_equal (method, "messages") && thread != NULL)
+    {
+      GListModel *messages = tandem_sms_thread_get_messages (thread);
+      guint n = g_list_model_get_n_items (messages);
+      GVariantBuilder builder;
+      GVariantBuilder list;
+
+      g_variant_builder_init (&list, G_VARIANT_TYPE ("aa{sv}"));
+      for (guint i = 0; i < n; i++)
+        {
+          g_autoptr(TandemSmsMessage) message = g_list_model_get_item (messages, i);
+
+          g_variant_builder_add (&list, "a{sv}", message_to_variant (message));
+        }
+      g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+      g_variant_builder_add (&builder, "{sv}", "messages", g_variant_builder_end (&list));
+      return g_variant_builder_end (&builder);
+    }
+  else if (g_str_equal (method, "request-messages") && thread != NULL)
+    {
+      gint64 before = 0;
+      gint32 count = 0;
+
+      tandem_plugin_args_lookup (args, "before", "x", &before);
+      tandem_plugin_args_lookup (args, "count", "i", &count);
+      tandem_sms_plugin_request_messages (self, thread, before, count);
+    }
+  else if (g_str_equal (method, "send"))
+    {
+      g_autofree const char **addresses = NULL;
+      const char *body = NULL;
+      gint64 sub_id = -1;
+
+      tandem_plugin_args_lookup (args, "sub_id", "x", &sub_id);
+      if (!tandem_plugin_args_lookup (args, "addresses", "^a&s", &addresses) ||
+          !tandem_plugin_args_lookup (args, "body", "&s", &body))
+        {
+          g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "send needs addresses and body");
+          return NULL;
+        }
+      tandem_sms_plugin_send (self, addresses, body, sub_id);
+    }
+  else if (g_str_equal (method, "attachment"))
+    {
+      TandemSmsAttachment attachment = { 0 };
+      const char *unique = NULL;
+
+      if (!tandem_plugin_args_lookup (args, "part_id", "x", &attachment.part_id) ||
+          !tandem_plugin_args_lookup (args, "unique_identifier", "&s", &unique))
+        {
+          g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "attachment needs part_id and unique_identifier");
+          return NULL;
+        }
+      attachment.unique_identifier = (char *) unique;
+      tandem_sms_plugin_request_attachment (self, &attachment);
+    }
+  else
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "Bad call %s", method);
+  return NULL;
 }
 
 static void
@@ -550,7 +668,8 @@ tandem_sms_plugin_class_init (TandemSmsPluginClass *klass)
   plugin_class->handle_packet = sms_handle_packet;
   plugin_class->connected = sms_connected;
   plugin_class->disconnected = sms_disconnected;
-  plugin_class->create_group = sms_create_group;
+  plugin_class->get_state = sms_get_state;
+  plugin_class->call = sms_call;
 
   signals[THREADS_CHANGED] = g_signal_new ("threads-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
                                            NULL, NULL, NULL, G_TYPE_NONE, 0);

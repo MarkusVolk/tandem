@@ -5,7 +5,7 @@
 
 G_BEGIN_DECLS
 
-#define TANDEM_DBUS_NAME "de.flk.Tandem"
+#define TANDEM_DBUS_NAME "de.flk.Tandem.Daemon"
 #define TANDEM_DBUS_PATH "/de/flk/Tandem"
 #define TANDEM_DBUS_MANAGER_IFACE "de.flk.Tandem.Manager"
 #define TANDEM_DBUS_DEVICE_IFACE "de.flk.Tandem.Device"
@@ -19,5 +19,6 @@ void     tandem_dbus_api_notify_device  (const char *signal_name, const char *de
 void     tandem_dbus_api_add_device     (TandemDevice *device);
 void     tandem_dbus_api_remove_device  (TandemDevice *device);
 void     tandem_dbus_api_device_changed (TandemDevice *device);
+void     tandem_dbus_api_plugin_changed (TandemDevice *device, const char *plugin, gpointer user_data);
 
 G_END_DECLS

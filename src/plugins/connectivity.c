@@ -2,7 +2,6 @@
 #include "../device.h"
 #include "../plugin.h"
 
-#include <adwaita.h>
 
 #define TANDEM_TYPE_CONNECTIVITY_PLUGIN (tandem_connectivity_plugin_get_type ())
 G_DECLARE_FINAL_TYPE (TandemConnectivityPlugin, tandem_connectivity_plugin, TANDEM, CONNECTIVITY_PLUGIN, TandemPlugin)
@@ -64,27 +63,15 @@ connectivity_connected (TandemPlugin *plugin)
   tandem_plugin_send (plugin, request);
 }
 
-static void
-connectivity_changed_cb (TandemPlugin *plugin, gpointer user_data)
+static GVariant *
+connectivity_get_state (TandemPlugin *plugin)
 {
   TandemConnectivityPlugin *self = TANDEM_CONNECTIVITY_PLUGIN (plugin);
+  GVariantBuilder builder;
 
-  adw_action_row_set_subtitle (ADW_ACTION_ROW (user_data),
-                               self->summary != NULL && *self->summary != '\0' ? self->summary : "No signal");
-}
-
-static GtkWidget *
-connectivity_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *row = adw_action_row_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Mobile network");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "Signal");
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), row);
-  connectivity_changed_cb (plugin, row);
-  g_signal_connect_object (plugin, "changed", G_CALLBACK (connectivity_changed_cb), row, 0);
-  return group;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "summary", g_variant_new_string (self->summary != NULL ? self->summary : ""));
+  return g_variant_builder_end (&builder);
 }
 
 static void
@@ -106,7 +93,7 @@ tandem_connectivity_plugin_class_init (TandemConnectivityPluginClass *klass)
   plugin_class->outgoing = connectivity_outgoing;
   plugin_class->handle_packet = connectivity_handle_packet;
   plugin_class->connected = connectivity_connected;
-  plugin_class->create_group = connectivity_create_group;
+  plugin_class->get_state = connectivity_get_state;
 }
 
 static void

@@ -1,27 +1,26 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "window.h"
-#include "device-page.h"
-#include "../app.h"
+#include "gui.h"
 #include "tandem-build.h"
 
-struct _TandemWindow
+struct _TandemGuiWindow
 {
   AdwApplicationWindow parent_instance;
 
-  TandemManager *manager;
+  TandemGuiDaemon *daemon;
   GtkWidget *split;
   GtkWidget *list;
   GtkWidget *content;
   GtkWidget *empty_page;
+  GtkWidget *empty_status;
   GtkSingleSelection *selection;
 };
 
-G_DEFINE_FINAL_TYPE (TandemWindow, tandem_window, ADW_TYPE_APPLICATION_WINDOW)
+G_DEFINE_FINAL_TYPE (TandemGuiWindow, tandem_gui_window, ADW_TYPE_APPLICATION_WINDOW)
 
 static const char *
-device_icon (TandemDevice *device)
+device_icon (TandemGuiDevice *device)
 {
-  const char *type = tandem_device_get_type_name (device);
+  const char *type = tandem_gui_device_get_type_name (device);
 
   if (g_strcmp0 (type, "phone") == 0)
     return "phone-symbolic";
@@ -34,37 +33,32 @@ device_icon (TandemDevice *device)
   return "computer-symbolic";
 }
 
-static char *
-device_subtitle (TandemDevice *device)
+static const char *
+device_subtitle (TandemGuiDevice *device)
 {
-  switch (tandem_device_get_pair_state (device))
-    {
-    case TANDEM_PAIR_PAIRED:
-      return g_strdup (tandem_device_is_reachable (device) ? "Connected" : "Paired, not reachable");
-    case TANDEM_PAIR_REQUESTED:
-      return g_strdup ("Pairing requested");
-    case TANDEM_PAIR_REQUESTED_BY_PEER:
-      return g_strdup ("Wants to pair");
-    default:
-      return g_strdup ("Available");
-    }
+  const char *state = tandem_gui_device_get_state (device);
+
+  if (g_str_equal (state, "paired-reachable"))
+    return "Connected";
+  if (g_str_equal (state, "paired"))
+    return "Paired, not reachable";
+  if (g_str_equal (state, "requested"))
+    return "Pairing requested";
+  if (g_str_equal (state, "requested-by-peer"))
+    return "Wants to pair";
+  return "Available";
 }
 
 static void
-row_update (GtkWidget *row, TandemDevice *device)
+row_update (GtkWidget *row, TandemGuiDevice *device)
 {
-  GtkWidget *image = g_object_get_data (G_OBJECT (row), "image");
-  GtkWidget *title = g_object_get_data (G_OBJECT (row), "title");
-  GtkWidget *subtitle = g_object_get_data (G_OBJECT (row), "subtitle");
-  g_autofree char *text = device_subtitle (device);
-
-  gtk_image_set_from_icon_name (GTK_IMAGE (image), device_icon (device));
-  gtk_label_set_text (GTK_LABEL (title), tandem_device_get_name (device));
-  gtk_label_set_text (GTK_LABEL (subtitle), text);
+  gtk_image_set_from_icon_name (GTK_IMAGE (g_object_get_data (G_OBJECT (row), "image")), device_icon (device));
+  gtk_label_set_text (GTK_LABEL (g_object_get_data (G_OBJECT (row), "title")), tandem_gui_device_get_name (device));
+  gtk_label_set_text (GTK_LABEL (g_object_get_data (G_OBJECT (row), "subtitle")), device_subtitle (device));
 }
 
 static void
-row_device_changed_cb (TandemDevice *device, gpointer user_data)
+row_device_changed_cb (TandemGuiDevice *device, gpointer user_data)
 {
   row_update (GTK_WIDGET (user_data), device);
 }
@@ -102,7 +96,7 @@ static void
 factory_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
 {
   GtkWidget *row = gtk_list_item_get_child (item);
-  TandemDevice *device = gtk_list_item_get_item (item);
+  TandemGuiDevice *device = gtk_list_item_get_item (item);
 
   row_update (row, device);
   g_signal_connect (device, "changed", G_CALLBACK (row_device_changed_cb), row);
@@ -111,14 +105,11 @@ factory_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_d
 static void
 factory_unbind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
 {
-  GtkWidget *row = gtk_list_item_get_child (item);
-  TandemDevice *device = gtk_list_item_get_item (item);
-
-  g_signal_handlers_disconnect_by_func (device, row_device_changed_cb, row);
+  g_signal_handlers_disconnect_by_func (gtk_list_item_get_item (item), row_device_changed_cb, gtk_list_item_get_child (item));
 }
 
 static void
-show_device (TandemWindow *self, TandemDevice *device)
+show_device (TandemGuiWindow *self, TandemGuiDevice *device)
 {
   AdwNavigationPage *page;
 
@@ -127,9 +118,9 @@ show_device (TandemWindow *self, TandemDevice *device)
       adw_navigation_view_replace (ADW_NAVIGATION_VIEW (self->content), (AdwNavigationPage *[]) { ADW_NAVIGATION_PAGE (self->empty_page) }, 1);
       return;
     }
-  page = adw_navigation_view_find_page (ADW_NAVIGATION_VIEW (self->content), tandem_device_get_id (device));
+  page = adw_navigation_view_find_page (ADW_NAVIGATION_VIEW (self->content), tandem_gui_device_get_id (device));
   if (page == NULL)
-    page = ADW_NAVIGATION_PAGE (tandem_device_page_new (device));
+    page = ADW_NAVIGATION_PAGE (tandem_gui_device_page_new (device));
   adw_navigation_view_replace (ADW_NAVIGATION_VIEW (self->content), &page, 1);
   adw_navigation_split_view_set_show_content (ADW_NAVIGATION_SPLIT_VIEW (self->split), TRUE);
 }
@@ -137,51 +128,86 @@ show_device (TandemWindow *self, TandemDevice *device)
 static void
 selection_changed_cb (GObject *selection, GParamSpec *pspec, gpointer user_data)
 {
-  TandemWindow *self = user_data;
-  TandemDevice *device = gtk_single_selection_get_selected_item (GTK_SINGLE_SELECTION (selection));
+  TandemGuiWindow *self = user_data;
 
-  show_device (self, device);
+  show_device (self, gtk_single_selection_get_selected_item (GTK_SINGLE_SELECTION (selection)));
+}
+
+static void
+update_empty (TandemGuiWindow *self)
+{
+  gboolean running = tandem_gui_daemon_is_running (self->daemon);
+
+  adw_status_page_set_title (ADW_STATUS_PAGE (self->empty_status), running ? "No Devices" : "Service not running");
+  adw_status_page_set_description (ADW_STATUS_PAGE (self->empty_status),
+                                   running ? "Devices running KDE Connect on this network appear in the sidebar"
+                                           : "tandemd is not running; start it with systemctl --user start tandem");
 }
 
 static void
 items_changed_cb (GListModel *model, guint position, guint removed, guint added, gpointer user_data)
 {
-  TandemWindow *self = user_data;
+  TandemGuiWindow *self = user_data;
 
   if (g_list_model_get_n_items (model) == 0)
     show_device (self, NULL);
 }
 
 static void
-tandem_window_dispose (GObject *object)
+running_changed_cb (TandemGuiDaemon *daemon, gpointer user_data)
 {
-  TandemWindow *self = TANDEM_WINDOW (object);
+  update_empty (user_data);
+}
 
-  if (self->manager != NULL)
-    g_signal_handlers_disconnect_by_data (tandem_manager_get_devices (self->manager), self);
-  g_clear_object (&self->manager);
+void
+tandem_gui_window_show_device (TandemGuiWindow *self, const char *id)
+{
+  GListModel *devices = tandem_gui_daemon_get_devices (self->daemon);
+  guint n = g_list_model_get_n_items (devices);
 
-  G_OBJECT_CLASS (tandem_window_parent_class)->dispose (object);
+  for (guint i = 0; i < n; i++)
+    {
+      g_autoptr(TandemGuiDevice) device = g_list_model_get_item (devices, i);
+
+      if (g_str_equal (tandem_gui_device_get_id (device), id))
+        {
+          gtk_single_selection_set_selected (self->selection, i);
+          return;
+        }
+    }
 }
 
 static void
-tandem_window_class_init (TandemWindowClass *klass)
+tandem_gui_window_dispose (GObject *object)
 {
-  G_OBJECT_CLASS (klass)->dispose = tandem_window_dispose;
+  TandemGuiWindow *self = TANDEM_GUI_WINDOW (object);
+
+  if (self->daemon != NULL)
+    {
+      g_signal_handlers_disconnect_by_data (tandem_gui_daemon_get_devices (self->daemon), self);
+      g_signal_handlers_disconnect_by_data (self->daemon, self);
+    }
+  g_clear_object (&self->daemon);
+  G_OBJECT_CLASS (tandem_gui_window_parent_class)->dispose (object);
 }
 
 static void
-tandem_window_init (TandemWindow *self)
+tandem_gui_window_class_init (TandemGuiWindowClass *klass)
+{
+  G_OBJECT_CLASS (klass)->dispose = tandem_gui_window_dispose;
+}
+
+static void
+tandem_gui_window_init (TandemGuiWindow *self)
 {
   gtk_window_set_title (GTK_WINDOW (self), "Tandem");
   gtk_window_set_default_size (GTK_WINDOW (self), 860, 600);
-  gtk_window_set_hide_on_close (GTK_WINDOW (self), TRUE);
 }
 
 GtkWidget *
-tandem_window_new (TandemApp *app)
+tandem_gui_window_new (GtkApplication *app)
 {
-  TandemWindow *self = g_object_new (TANDEM_TYPE_WINDOW, "application", app, NULL);
+  TandemGuiWindow *self = g_object_new (TANDEM_TYPE_GUI_WINDOW, "application", app, NULL);
   GListModel *devices;
   GtkWidget *sidebar_toolbar = adw_toolbar_view_new ();
   GtkWidget *sidebar_header = adw_header_bar_new ();
@@ -191,11 +217,10 @@ tandem_window_new (TandemApp *app)
   GtkListItemFactory *factory = gtk_signal_list_item_factory_new ();
   GtkWidget *sidebar_page;
   GtkWidget *empty_toolbar = adw_toolbar_view_new ();
-  GtkWidget *empty_status = adw_status_page_new ();
   g_autoptr(GMenu) menu = g_menu_new ();
 
-  self->manager = g_object_ref (tandem_app_get_manager (app));
-  devices = tandem_manager_get_devices (self->manager);
+  self->daemon = g_object_ref (tandem_gui_daemon_get ());
+  devices = tandem_gui_daemon_get_devices (self->daemon);
 
   g_menu_append (menu, "Refresh", "app.refresh");
   g_menu_append (menu, "Preferences", "app.preferences");
@@ -221,12 +246,11 @@ tandem_window_new (TandemApp *app)
   adw_toolbar_view_set_content (ADW_TOOLBAR_VIEW (sidebar_toolbar), scrolled);
   sidebar_page = GTK_WIDGET (adw_navigation_page_new (sidebar_toolbar, "Devices"));
 
-  adw_status_page_set_icon_name (ADW_STATUS_PAGE (empty_status), TANDEM_APP_ID "-symbolic");
-  adw_status_page_set_title (ADW_STATUS_PAGE (empty_status), "No Devices");
-  adw_status_page_set_description (ADW_STATUS_PAGE (empty_status),
-                                   "Devices running KDE Connect on this network appear in the sidebar");
+  self->empty_status = adw_status_page_new ();
+  adw_status_page_set_icon_name (ADW_STATUS_PAGE (self->empty_status), TANDEM_APP_ID "-symbolic");
+  update_empty (self);
   adw_toolbar_view_add_top_bar (ADW_TOOLBAR_VIEW (empty_toolbar), adw_header_bar_new ());
-  adw_toolbar_view_set_content (ADW_TOOLBAR_VIEW (empty_toolbar), empty_status);
+  adw_toolbar_view_set_content (ADW_TOOLBAR_VIEW (empty_toolbar), self->empty_status);
   self->empty_page = GTK_WIDGET (adw_navigation_page_new (empty_toolbar, "Tandem"));
   self->content = adw_navigation_view_new ();
   adw_navigation_view_add (ADW_NAVIGATION_VIEW (self->content), ADW_NAVIGATION_PAGE (self->empty_page));
@@ -240,6 +264,7 @@ tandem_window_new (TandemApp *app)
 
   g_signal_connect (self->selection, "notify::selected-item", G_CALLBACK (selection_changed_cb), self);
   g_signal_connect (devices, "items-changed", G_CALLBACK (items_changed_cb), self);
+  g_signal_connect (self->daemon, "running-changed", G_CALLBACK (running_changed_cb), self);
   show_device (self, gtk_single_selection_get_selected_item (self->selection));
   return GTK_WIDGET (self);
 }

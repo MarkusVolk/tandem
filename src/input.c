@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "input.h"
+#include "tandem-build.h"
 
 #include <string.h>
 #include <xkbcommon/xkbcommon.h>
@@ -60,7 +61,9 @@ select_backend (void)
   g_autofree char *wanted = g_settings_get_string (settings, "input-backend");
   TandemInputBackend *candidates[] = {
     tandem_input_portal_backend (),
+#ifdef TANDEM_HAVE_WAYLAND
     tandem_input_wlr_backend (),
+#endif
     tandem_input_uinput_backend (),
   };
 

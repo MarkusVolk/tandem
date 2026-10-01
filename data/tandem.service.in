@@ -2,12 +2,11 @@
 Description=Tandem phone integration
 PartOf=graphical-session.target
 After=graphical-session.target
-ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]
 Type=dbus
-BusName=@APP_ID@
-ExecStart=@BINDIR@/tandem --gapplication-service
+BusName=@APP_ID@.Daemon
+ExecStart=@BINDIR@/tandemd
 Restart=on-failure
 Slice=app.slice
 

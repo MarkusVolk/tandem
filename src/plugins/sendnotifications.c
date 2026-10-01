@@ -4,7 +4,6 @@
 #include "../util.h"
 #include "tandem-build.h"
 
-#include <adwaita.h>
 
 #define TANDEM_TYPE_SENDNOTIFICATIONS_PLUGIN (tandem_sendnotifications_plugin_get_type ())
 G_DECLARE_FINAL_TYPE (TandemSendnotificationsPlugin, tandem_sendnotifications_plugin, TANDEM, SENDNOTIFICATIONS_PLUGIN, TandemPlugin)
@@ -172,19 +171,6 @@ ensure_monitor (void)
                                      NULL, NULL, monitor_ready_cb, NULL);
 }
 
-static GtkWidget *
-sendnotifications_create_group (TandemPlugin *plugin)
-{
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *row = adw_switch_row_new ();
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Desktop notifications");
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "Forward notifications to the device");
-  g_settings_bind (tandem_plugin_get_settings (plugin), "send-notifications", row, "active", G_SETTINGS_BIND_DEFAULT);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), row);
-  return group;
-}
-
 static void
 tandem_sendnotifications_plugin_constructed (GObject *object)
 {
@@ -214,7 +200,6 @@ tandem_sendnotifications_plugin_class_init (TandemSendnotificationsPluginClass *
   plugin_class->name = "sendnotifications";
   plugin_class->title = "Send notifications";
   plugin_class->outgoing = sendnotifications_outgoing;
-  plugin_class->create_group = sendnotifications_create_group;
 }
 
 static void

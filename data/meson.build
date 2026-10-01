@@ -4,17 +4,27 @@ conf = configuration_data()
 conf.set('APP_ID', app_id)
 conf.set('BINDIR', bindir)
 
-configure_file(
-  input: 'de.flk.Tandem.desktop.in',
-  output: app_id + '.desktop',
-  configuration: conf,
-  install: true,
-  install_dir: datadir / 'applications',
-)
+if build_gui
+  configure_file(
+    input: 'de.flk.Tandem.desktop.in',
+    output: app_id + '.desktop',
+    configuration: conf,
+    install: true,
+    install_dir: datadir / 'applications',
+  )
+
+  configure_file(
+    input: 'de.flk.Tandem.service.in',
+    output: app_id + '.service',
+    configuration: conf,
+    install: true,
+    install_dir: datadir / 'dbus-1/services',
+  )
+endif
 
 configure_file(
-  input: 'de.flk.Tandem.service.in',
-  output: app_id + '.service',
+  input: 'de.flk.Tandem.Daemon.service.in',
+  output: app_id + '.Daemon.service',
   configuration: conf,
   install: true,
   install_dir: datadir / 'dbus-1/services',

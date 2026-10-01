@@ -4,7 +4,6 @@
 #include "../plugin.h"
 #include "../util.h"
 
-#include <adwaita.h>
 
 #define TANDEM_TYPE_CLIPBOARD_PLUGIN (tandem_clipboard_plugin_get_type ())
 G_DECLARE_FINAL_TYPE (TandemClipboardPlugin, tandem_clipboard_plugin, TANDEM, CLIPBOARD_PLUGIN, TandemPlugin)
@@ -89,31 +88,27 @@ clipboard_connected (TandemPlugin *plugin)
   }
 }
 
-static void
-send_now_cb (AdwButtonRow *row, gpointer user_data)
+static GVariant *
+clipboard_get_state (TandemPlugin *plugin)
 {
-  tandem_clipboard_plugin_send (TANDEM_PLUGIN (user_data), tandem_clipboard_get_text (tandem_clipboard_get ()));
+  GVariantBuilder builder;
+
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&builder, "{sv}", "backend",
+                         g_variant_new_string (tandem_clipboard_backend_name (tandem_clipboard_get ())));
+  return g_variant_builder_end (&builder);
 }
 
-static GtkWidget *
-clipboard_create_group (TandemPlugin *plugin)
+static GVariant *
+clipboard_call (TandemPlugin *plugin, const char *method, GVariant *args, GError **error)
 {
-  GtkWidget *group = adw_preferences_group_new ();
-  GtkWidget *auto_row = adw_switch_row_new ();
-  GtkWidget *send_row = adw_button_row_new ();
-  g_autofree char *description = g_strdup_printf ("Clipboard access through %s",
-                                                  tandem_clipboard_backend_name (tandem_clipboard_get ()));
-
-  adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Clipboard");
-  adw_preferences_group_set_description (ADW_PREFERENCES_GROUP (group), description);
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (auto_row), "Share automatically");
-  g_settings_bind (tandem_plugin_get_settings (plugin), "clipboard-auto", auto_row, "active", G_SETTINGS_BIND_DEFAULT);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), auto_row);
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (send_row), "Send clipboard now");
-  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (send_row), "edit-paste-symbolic");
-  g_signal_connect_object (send_row, "activated", G_CALLBACK (send_now_cb), plugin, 0);
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), send_row);
-  return group;
+  if (g_str_equal (method, "send"))
+    {
+      tandem_clipboard_plugin_send (plugin, tandem_clipboard_get_text (tandem_clipboard_get ()));
+      return NULL;
+    }
+  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD, "Unknown method %s", method);
+  return NULL;
 }
 
 static void
@@ -156,7 +151,8 @@ tandem_clipboard_plugin_class_init (TandemClipboardPluginClass *klass)
   plugin_class->outgoing = clipboard_types;
   plugin_class->handle_packet = clipboard_handle_packet;
   plugin_class->connected = clipboard_connected;
-  plugin_class->create_group = clipboard_create_group;
+  plugin_class->get_state = clipboard_get_state;
+  plugin_class->call = clipboard_call;
 }
 
 static void

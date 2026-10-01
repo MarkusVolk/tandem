@@ -1,15 +1,23 @@
 # Tandem
 
 Tandem connects a Linux desktop with phones running [KDE Connect](https://kdeconnect.kde.org/).
-It speaks the KDE Connect protocol (version 8) and is written in C with GLib, GTK 4 and
-libadwaita. It runs as a D-Bus activated background service with a status notifier item,
-opens a window on demand and can be driven from the command line.
+It speaks the KDE Connect protocol (version 8) and is written in C with GLib and GIO.
 
-Tandem talks only to standard desktop services: `org.freedesktop.Notifications`, MPRIS,
+It comes in two parts:
+
+- `tandemd`, a background service without any toolkit dependency. It does the networking,
+  pairing and all plugins, exports a status notifier item with a menu, announces itself over
+  mDNS and offers a D-Bus API (`de.flk.Tandem.Daemon`) that the `tandem` command line tool and
+  the frontends use.
+- `tandem-gtk`, a GTK 4 and libadwaita frontend (`de.flk.Tandem`) for the window, dialogs and
+  the presenter overlay. Other frontends can be written against the same D-Bus API.
+
+The daemon talks only to standard desktop services: `org.freedesktop.Notifications`, MPRIS,
 UPower, `org.freedesktop.login1`, PipeWire's PulseAudio interface, the
 `org.freedesktop.portal.RemoteDesktop` portal or the wlroots virtual input protocols for
-remote input, and `ext-data-control-v1` for the clipboard. It needs no plugin loader, no
-database and no Evolution Data Server.
+remote input, and `ext-data-control-v1` for the clipboard. It opens its own Wayland connection
+for the latter two, so it runs under any compositor and also without one (remote input then
+uses `/dev/uinput`, and the clipboard is not synchronised).
 
 ## Building
 
@@ -19,10 +27,12 @@ meson compile -C build
 meson install -C build
 ```
 
-Dependencies: glib-2.0, gio-unix-2.0, json-glib-1.0, gtk4, libadwaita-1, gnutls,
-libpulse-mainloop-glib, wayland-client, wayland-protocols, xkbcommon and wayland-scanner at
-build time; glib-networking and xdg-user-dirs at run time. Avahi, xdg-desktop-portal and
-sound-theme-freedesktop are optional.
+Dependencies of the daemon: glib-2.0, gio-unix-2.0, json-glib-1.0, gnutls and xkbcommon.
+Optional, each behind a meson feature option: libpulse-mainloop-glib (`-Dpulse`, system volume
+and muting during calls), gstreamer-1.0 (`-Dgstreamer`, ring tone), wayland-client,
+wayland-protocols and wayland-scanner (`-Dwayland`, wlroots remote input and clipboard). The
+frontend needs gtk4 and libadwaita-1 (`-Dgui`). At run time: glib-networking and xdg-user-dirs;
+Avahi, xdg-desktop-portal and sound-theme-freedesktop are optional.
 
 ## Running
 
@@ -33,9 +43,10 @@ tandem list            # devices
 tandem --smoke-test    # check the build and the host without a phone
 ```
 
-The service is D-Bus activated (`de.flk.Tandem`) and keeps running in the background with a
-status notifier item whose menu offers the common actions per device. Closing the window only
-hides it; `tandem quit` or the tray menu stops the service.
+The daemon is D-Bus activated (`de.flk.Tandem.Daemon`) and keeps running in the background with
+a status notifier item whose menu offers the common actions per device. `tandem` without a
+command, `tandem show` and the tray menu open the frontend; `tandem quit` or the tray menu stop
+the daemon.
 
 ## What works
 
@@ -77,7 +88,9 @@ tandem players <dev>
 ```
 
 Devices are addressed by id, id prefix or name. The same operations are available on D-Bus
-under `/de/flk/Tandem/devices/<id>` (`de.flk.Tandem.Device`).
+under `/de/flk/Tandem/devices/<id>` (`de.flk.Tandem.Device`); `GetPluginState` and
+`CallPlugin` expose every plugin's state and actions generically, which is what the frontend
+uses.
 
 ## State
 
