@@ -116,6 +116,7 @@ make_reader (GInputStream *base, gsize buffer_size)
 {
   GDataInputStream *reader = g_data_input_stream_new (base);
 
+  g_filter_input_stream_set_close_base_stream (G_FILTER_INPUT_STREAM (reader), FALSE);
   g_buffered_input_stream_set_buffer_size (G_BUFFERED_INPUT_STREAM (reader), buffer_size);
   g_data_input_stream_set_newline_type (reader, G_DATA_STREAM_NEWLINE_TYPE_LF);
   return reader;

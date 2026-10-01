@@ -2,6 +2,8 @@
 #include "smoke.h"
 #include "cert.h"
 #include "config.h"
+#include "handshake.h"
+#include "link.h"
 #include "packet.h"
 #include "util.h"
 
@@ -10,6 +12,26 @@
 #include <string.h>
 
 static int failures;
+
+static void
+remove_tree (const char *path)
+{
+  g_autoptr(GFile) file = g_file_new_for_path (path);
+  g_autoptr(GFileEnumerator) children = g_file_enumerate_children (file, "standard::name,standard::type", 0, NULL, NULL);
+  GFileInfo *info;
+
+  while (children != NULL && (info = g_file_enumerator_next_file (children, NULL, NULL)) != NULL)
+    {
+      g_autofree char *child = g_build_filename (path, g_file_info_get_name (info), NULL);
+
+      if (g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY)
+        remove_tree (child);
+      else
+        g_unlink (child);
+      g_object_unref (info);
+    }
+  g_rmdir (path);
+}
 
 static void
 report (gboolean ok, const char *check, const char *detail)
@@ -150,6 +172,199 @@ check_util (const char *dir)
           "util: unique file names", second);
 }
 
+typedef struct
+{
+  TandemConfig *config_a;
+  TandemConfig *config_b;
+  TandemLink *link_a;
+  TandemLink *link_b;
+  gboolean ping_received;
+  char *error;
+  GMainLoop *loop;
+  guint16 port;
+} Loopback;
+
+static TandemPacket *
+loopback_identity (TandemConfig *config)
+{
+  TandemPacket *packet = tandem_packet_new ("kdeconnect.identity");
+  const char *caps[] = { "kdeconnect.ping", NULL };
+
+  tandem_packet_set_string (packet, "deviceId", tandem_config_get_device_id (config));
+  tandem_packet_set_string (packet, "deviceName", "smoke");
+  tandem_packet_set_string (packet, "deviceType", "desktop");
+  tandem_packet_set_int (packet, "protocolVersion", TANDEM_PROTOCOL_VERSION);
+  tandem_packet_set_strv (packet, "incomingCapabilities", caps);
+  tandem_packet_set_strv (packet, "outgoingCapabilities", caps);
+  return packet;
+}
+
+static TandemPacket *
+identity_a (gpointer user_data)
+{
+  return loopback_identity (((Loopback *) user_data)->config_a);
+}
+
+static TandemPacket *
+identity_b (gpointer user_data)
+{
+  return loopback_identity (((Loopback *) user_data)->config_b);
+}
+
+static void
+loopback_finish (Loopback *lb, const char *error)
+{
+  if (lb->error == NULL && error != NULL)
+    lb->error = g_strdup (error);
+  if (g_main_loop_is_running (lb->loop))
+    g_main_loop_quit (lb->loop);
+}
+
+static void
+loopback_packet_cb (TandemLink *link, TandemPacket *packet, gpointer user_data)
+{
+  Loopback *lb = user_data;
+
+  if (tandem_packet_is_type (packet, "kdeconnect.ping"))
+    {
+      lb->ping_received = TRUE;
+      loopback_finish (lb, NULL);
+    }
+}
+
+static void
+loopback_maybe_ping (Loopback *lb)
+{
+  g_autoptr(TandemPacket) ping = NULL;
+
+  if (lb->link_a == NULL || lb->link_b == NULL)
+    return;
+  g_signal_connect (lb->link_b, "packet", G_CALLBACK (loopback_packet_cb), lb);
+  ping = tandem_packet_new ("kdeconnect.ping");
+  tandem_packet_set_string (ping, "message", "smoke");
+  tandem_link_send (lb->link_a, ping);
+}
+
+static void
+loopback_connect_cb (GObject *source, GAsyncResult *result, gpointer user_data)
+{
+  Loopback *lb = user_data;
+  g_autoptr(GError) error = NULL;
+
+  lb->link_a = tandem_handshake_finish (result, &error);
+  if (lb->link_a == NULL)
+    loopback_finish (lb, error->message);
+  else
+    loopback_maybe_ping (lb);
+}
+
+static void
+loopback_accept_handshake_cb (GObject *source, GAsyncResult *result, gpointer user_data)
+{
+  Loopback *lb = user_data;
+  g_autoptr(GError) error = NULL;
+
+  lb->link_b = tandem_handshake_finish (result, &error);
+  if (lb->link_b == NULL)
+    loopback_finish (lb, error->message);
+  else
+    loopback_maybe_ping (lb);
+}
+
+static void
+loopback_accepted_cb (GObject *source, GAsyncResult *result, gpointer user_data)
+{
+  Loopback *lb = user_data;
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GSocketConnection) connection = NULL;
+
+  connection = g_socket_listener_accept_finish (G_SOCKET_LISTENER (source), result, NULL, &error);
+  if (connection == NULL)
+    {
+      loopback_finish (lb, error->message);
+      return;
+    }
+  tandem_handshake_accept_async (lb->config_b, connection, identity_b, lb, NULL,
+                                 loopback_accept_handshake_cb, lb);
+}
+
+static gboolean
+loopback_timeout_cb (gpointer user_data)
+{
+  loopback_finish (user_data, "timeout");
+  return G_SOURCE_REMOVE;
+}
+
+static void
+check_loopback (const char *dir)
+{
+  Loopback lb = { 0 };
+  g_autoptr(GError) error = NULL;
+  g_autofree char *dir_b = g_build_filename (dir, "peer", NULL);
+  g_autoptr(GSocketListener) listener = g_socket_listener_new ();
+  g_autoptr(GInetAddress) loopback = g_inet_address_new_loopback (G_SOCKET_FAMILY_IPV4);
+  g_autoptr(GSocketAddress) bind_to = g_inet_socket_address_new (loopback, 0);
+  g_autoptr(GSocketAddress) bound = NULL;
+  g_autoptr(GSocketAddress) target = NULL;
+  g_autoptr(TandemPacket) peer_identity = NULL;
+  guint timeout;
+
+  lb.config_a = tandem_config_new (dir, &error);
+  lb.config_b = lb.config_a != NULL ? tandem_config_new (dir_b, &error) : NULL;
+  if (lb.config_b == NULL)
+    {
+      report (FALSE, "loopback: second identity", error->message);
+      g_clear_object (&lb.config_a);
+      return;
+    }
+
+  if (!g_socket_listener_add_address (listener, bind_to, G_SOCKET_TYPE_STREAM, G_SOCKET_PROTOCOL_TCP,
+                                      NULL, &bound, &error))
+    {
+      report (FALSE, "loopback: listener", error->message);
+      goto out;
+    }
+  lb.port = g_inet_socket_address_get_port (G_INET_SOCKET_ADDRESS (bound));
+  lb.loop = g_main_loop_new (NULL, FALSE);
+  g_socket_listener_accept_async (listener, NULL, loopback_accepted_cb, &lb);
+
+  peer_identity = loopback_identity (lb.config_b);
+  tandem_packet_set_int (peer_identity, "tcpPort", lb.port);
+  target = g_inet_socket_address_new (loopback, lb.port);
+  tandem_handshake_connect_async (lb.config_a, target, peer_identity, identity_a, &lb, NULL,
+                                  loopback_connect_cb, &lb);
+
+  timeout = g_timeout_add_seconds (10, loopback_timeout_cb, &lb);
+  g_main_loop_run (lb.loop);
+  g_source_remove (timeout);
+
+  report (lb.link_a != NULL && lb.link_b != NULL, "loopback: handshake in both roles", lb.error);
+  if (lb.link_a != NULL && lb.link_b != NULL)
+    {
+      g_autoptr(GTlsCertificate) cert_b = g_object_ref (tandem_config_get_certificate (lb.config_b));
+
+      report (g_strcmp0 (tandem_link_get_device_id (lb.link_a), tandem_config_get_device_id (lb.config_b)) == 0 &&
+              g_strcmp0 (tandem_link_get_device_id (lb.link_b), tandem_config_get_device_id (lb.config_a)) == 0,
+              "loopback: identities exchanged", NULL);
+      report (g_tls_certificate_is_same (tandem_link_get_peer_certificate (lb.link_a), cert_b),
+              "loopback: peer certificate seen", NULL);
+      report (lb.ping_received, "loopback: packet delivered", NULL);
+    }
+
+out:
+  g_socket_listener_close (listener);
+  if (lb.link_a != NULL)
+    tandem_link_close (lb.link_a);
+  if (lb.link_b != NULL)
+    tandem_link_close (lb.link_b);
+  g_clear_object (&lb.link_a);
+  g_clear_object (&lb.link_b);
+  g_clear_pointer (&lb.loop, g_main_loop_unref);
+  g_clear_object (&lb.config_a);
+  g_clear_object (&lb.config_b);
+  g_free (lb.error);
+}
+
 int
 tandem_smoke_run (void)
 {
@@ -166,22 +381,9 @@ tandem_smoke_run (void)
   check_packets ();
   check_verification_key ();
   check_util (dir);
+  check_loopback (dir);
 
-  {
-    g_autoptr(GFile) tmp = g_file_new_for_path (dir);
-    g_autoptr(GFileEnumerator) children = g_file_enumerate_children (tmp, "standard::name", 0, NULL, NULL);
-    GFileInfo *info;
-
-    while (children != NULL && (info = g_file_enumerator_next_file (children, NULL, NULL)) != NULL)
-      {
-        g_autoptr(GFile) child = g_file_get_child (tmp, g_file_info_get_name (info));
-        g_autoptr(GFile) nested = NULL;
-
-        g_file_delete (child, NULL, NULL);
-        g_object_unref (info);
-      }
-    g_file_delete (tmp, NULL, NULL);
-  }
+  remove_tree (dir);
 
   printf ("%d failure(s)\n", failures);
   return failures;
