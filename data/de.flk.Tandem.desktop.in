@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Tandem
+GenericName=Phone Integration
+Comment=Connect your phone with the KDE Connect protocol
+Exec=tandem show
+Icon=@APP_ID@
+Terminal=false
+Type=Application
+Categories=Network;Utility;GTK;
+Keywords=phone;kdeconnect;sms;notifications;
+DBusActivatable=true
+StartupNotify=true
+X-GNOME-UsesNotifications=true

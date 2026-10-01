@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="tandem">
+  <schema id="de.flk.Tandem" path="/de/flk/Tandem/">
+    <key name="device-name" type="s">
+      <default>""</default>
+      <summary>Name shown to other devices; the host name when empty</summary>
+    </key>
+    <key name="device-type" type="s">
+      <choices>
+        <choice value="desktop"/>
+        <choice value="laptop"/>
+      </choices>
+      <default>"desktop"</default>
+      <summary>Device type announced to other devices</summary>
+    </key>
+    <key name="mdns" type="b">
+      <default>true</default>
+      <summary>Announce and browse devices with mDNS through Avahi</summary>
+    </key>
+    <key name="download-dir" type="s">
+      <default>""</default>
+      <summary>Where received files go; the XDG download directory when empty</summary>
+    </key>
+    <key name="show-tray" type="b">
+      <default>true</default>
+      <summary>Export a status notifier item</summary>
+    </key>
+    <key name="input-backend" type="s">
+      <choices>
+        <choice value="auto"/>
+        <choice value="portal"/>
+        <choice value="wlr"/>
+        <choice value="uinput"/>
+      </choices>
+      <default>"auto"</default>
+      <summary>How remote input is injected</summary>
+    </key>
+    <key name="portal-restore-token" type="s">
+      <default>""</default>
+      <summary>Restore token of the RemoteDesktop portal session</summary>
+    </key>
+    <key name="disabled-plugins" type="as">
+      <default>[]</default>
+      <summary>Plugins switched off for every device</summary>
+    </key>
+    <key name="send-passwords" type="b">
+      <default>false</default>
+      <summary>Send clipboard contents marked as passwords</summary>
+    </key>
+  </schema>
+
+  <schema id="de.flk.Tandem.Device">
+    <key name="disabled-plugins" type="as">
+      <default>[]</default>
+      <summary>Plugins switched off for this device</summary>
+    </key>
+    <key name="commands" type="s">
+      <default>"{}"</default>
+      <summary>Commands the device may run here, as a JSON object of id to name and command</summary>
+    </key>
+    <key name="notification-blacklist" type="as">
+      <default>[]</default>
+      <summary>Applications whose notifications are not sent to the device</summary>
+    </key>
+    <key name="send-notification-icons" type="b">
+      <default>true</default>
+      <summary>Send notification icons along with the notification</summary>
+    </key>
+    <key name="pause-music" type="s">
+      <choices>
+        <choice value="never"/>
+        <choice value="ringing"/>
+        <choice value="talking"/>
+      </choices>
+      <default>"ringing"</default>
+      <summary>When to pause media players during a call</summary>
+    </key>
+    <key name="mute-music" type="b">
+      <default>false</default>
+      <summary>Mute the system instead of pausing players during a call</summary>
+    </key>
+    <key name="allow-unlock" type="b">
+      <default>false</default>
+      <summary>Let the device unlock this session</summary>
+    </key>
+    <key name="sms-sub-id" type="i">
+      <default>-1</default>
+      <summary>SIM subscription used for sending messages; -1 for the default</summary>
+    </key>
+  </schema>
+</schemalist>

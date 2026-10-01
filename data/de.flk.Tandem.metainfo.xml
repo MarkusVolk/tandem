@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>de.flk.Tandem</id>
+  <name>Tandem</name>
+  <summary>Connect your phone with the KDE Connect protocol</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <description>
+    <p>
+      Tandem pairs a desktop with phones running KDE Connect. It mirrors
+      notifications, shares files, links, clipboard and media controls, lets
+      the phone act as a touchpad and keyboard, and shows calls and messages.
+      It is built on GTK and libadwaita and talks only to standard desktop
+      services.
+    </p>
+  </description>
+  <launchable type="desktop-id">de.flk.Tandem.desktop</launchable>
+  <url type="homepage">https://github.com/MarkusVolk/tandem</url>
+  <developer id="de.flk">
+    <name>Markus Volk</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>tandem</binary>
+    <dbus type="session">de.flk.Tandem</dbus>
+  </provides>
+</component>
