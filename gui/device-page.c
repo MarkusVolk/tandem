@@ -12,9 +12,41 @@ struct _TandemGuiDevicePage
   GtkWidget *unpair_row;
   GtkWidget *actions_group;
   GtkWidget *plugins_group;
-  GtkWidget *plugin_groups_box;
+  GtkWidget *stack;
+  GtkWidget *tab_boxes[5];
   char *shown_plugins;
 };
+
+typedef struct
+{
+  const char *name;
+  const char *title;
+  const char *icon;
+} Tab;
+
+static const Tab tabs[] = {
+  { "device", "Device", "phone-symbolic" },
+  { "messages", "Messages", "mail-unread-symbolic" },
+  { "sharing", "Sharing", "document-send-symbolic" },
+  { "control", "Control", "input-keyboard-symbolic" },
+  { "plugins", "Plugins", "preferences-other-symbolic" },
+};
+
+static int
+tab_for_plugin (const char *plugin)
+{
+  static const struct { const char *plugin; int tab; } map[] = {
+    { "battery", 0 }, { "connectivity", 0 }, { "lock", 0 }, { "findmyphone", 0 },
+    { "sms", 1 }, { "notifications", 1 }, { "contacts", 1 }, { "telephony", 1 },
+    { "share", 2 }, { "clipboard", 2 }, { "sendnotifications", 2 },
+    { "remoteinput", 3 }, { "runcommand", 3 }, { "mousepad", 3 },
+  };
+
+  for (guint i = 0; i < G_N_ELEMENTS (map); i++)
+    if (g_str_equal (map[i].plugin, plugin))
+      return map[i].tab;
+  return -1;
+}
 
 G_DEFINE_FINAL_TYPE (TandemGuiDevicePage, tandem_gui_device_page, ADW_TYPE_NAVIGATION_PAGE)
 
@@ -107,14 +139,27 @@ rebuild_plugin_groups (TandemGuiDevicePage *self)
   g_free (self->shown_plugins);
   self->shown_plugins = g_steal_pointer (&joined);
 
-  while ((child = gtk_widget_get_first_child (self->plugin_groups_box)) != NULL)
-    gtk_box_remove (GTK_BOX (self->plugin_groups_box), child);
+  for (guint t = 0; t + 1 < G_N_ELEMENTS (tabs); t++)
+    {
+      GtkWidget *keep = t == 0 ? gtk_widget_get_next_sibling (gtk_widget_get_first_child (self->tab_boxes[t])) : NULL;
+
+      while ((child = gtk_widget_get_last_child (self->tab_boxes[t])) != NULL && child != keep)
+        gtk_box_remove (GTK_BOX (self->tab_boxes[t]), child);
+    }
   for (char **p = plugins; *p != NULL; p++)
     {
-      GtkWidget *group = tandem_gui_plugin_group_new (self->device, *p);
+      int tab = tab_for_plugin (*p);
+      GtkWidget *group = tab >= 0 ? tandem_gui_plugin_group_new (self->device, *p) : NULL;
 
       if (group != NULL)
-        gtk_box_append (GTK_BOX (self->plugin_groups_box), group);
+        gtk_box_append (GTK_BOX (self->tab_boxes[tab]), group);
+    }
+  for (guint t = 1; t + 1 < G_N_ELEMENTS (tabs); t++)
+    {
+      AdwViewStackPage *page = adw_view_stack_get_page (ADW_VIEW_STACK (self->stack),
+                                                        gtk_widget_get_ancestor (self->tab_boxes[t], ADW_TYPE_PREFERENCES_PAGE));
+
+      adw_view_stack_page_set_visible (page, gtk_widget_get_first_child (self->tab_boxes[t]) != NULL);
     }
 }
 
@@ -166,21 +211,39 @@ tandem_gui_device_page_init (TandemGuiDevicePage *self)
 {
 }
 
+static GtkWidget *
+tab_page_new (TandemGuiDevicePage *self, guint tab)
+{
+  GtkWidget *page = adw_preferences_page_new ();
+  GtkWidget *holder = adw_preferences_group_new ();
+
+  self->tab_boxes[tab] = gtk_box_new (GTK_ORIENTATION_VERTICAL, 24);
+  adw_preferences_group_add (ADW_PREFERENCES_GROUP (holder), self->tab_boxes[tab]);
+  adw_preferences_page_add (ADW_PREFERENCES_PAGE (page), ADW_PREFERENCES_GROUP (holder));
+  adw_view_stack_add_titled_with_icon (ADW_VIEW_STACK (self->stack), page, tabs[tab].name, tabs[tab].title, tabs[tab].icon);
+  return page;
+}
+
 GtkWidget *
 tandem_gui_device_page_new (TandemGuiDevice *device)
 {
   TandemGuiDevicePage *self = g_object_new (TANDEM_TYPE_GUI_DEVICE_PAGE, "tag", tandem_gui_device_get_id (device), NULL);
   GtkWidget *toolbar = adw_toolbar_view_new ();
+  GtkWidget *header = adw_header_bar_new ();
+  GtkWidget *switcher = adw_view_switcher_new ();
+  GtkWidget *switcher_bar = adw_view_switcher_bar_new ();
   GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-  GtkWidget *page = adw_preferences_page_new ();
   GtkWidget *status_group = adw_preferences_group_new ();
+  GtkWidget *device_page;
+  GtkWidget *plugins_page;
   GtkWidget *ping_row;
-  GtkWidget *holder;
 
   self->device = g_object_ref (device);
+  self->stack = adw_view_stack_new ();
   self->banner = adw_banner_new ("");
   g_signal_connect (self->banner, "button-clicked", G_CALLBACK (banner_clicked_cb), self);
 
+  device_page = tab_page_new (self, 0);
   self->status_row = adw_action_row_new ();
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->status_row), "Status");
   adw_preferences_group_add (ADW_PREFERENCES_GROUP (status_group), self->status_row);
@@ -192,30 +255,38 @@ tandem_gui_device_page_new (TandemGuiDevice *device)
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->unpair_row), "Unpair");
   g_signal_connect (self->unpair_row, "activated", G_CALLBACK (unpair_activated_cb), self);
   adw_preferences_group_add (ADW_PREFERENCES_GROUP (status_group), self->unpair_row);
-  adw_preferences_page_add (ADW_PREFERENCES_PAGE (page), ADW_PREFERENCES_GROUP (status_group));
-
+  gtk_box_prepend (GTK_BOX (self->tab_boxes[0]), status_group);
   self->actions_group = adw_preferences_group_new ();
   adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (self->actions_group), "Actions");
   ping_row = adw_button_row_new ();
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (ping_row), "Send ping");
   g_signal_connect (ping_row, "activated", G_CALLBACK (ping_activated_cb), self);
   adw_preferences_group_add (ADW_PREFERENCES_GROUP (self->actions_group), ping_row);
-  adw_preferences_page_add (ADW_PREFERENCES_PAGE (page), ADW_PREFERENCES_GROUP (self->actions_group));
+  gtk_box_insert_child_after (GTK_BOX (self->tab_boxes[0]), self->actions_group, status_group);
+  g_object_set_data (G_OBJECT (device_page), "fixed", GINT_TO_POINTER (2));
 
-  self->plugin_groups_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 24);
-  holder = adw_preferences_group_new ();
-  adw_preferences_group_add (ADW_PREFERENCES_GROUP (holder), self->plugin_groups_box);
-  adw_preferences_page_add (ADW_PREFERENCES_PAGE (page), ADW_PREFERENCES_GROUP (holder));
+  for (guint t = 1; t + 1 < G_N_ELEMENTS (tabs); t++)
+    tab_page_new (self, t);
 
+  plugins_page = tab_page_new (self, G_N_ELEMENTS (tabs) - 1);
   self->plugins_group = adw_preferences_group_new ();
   adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (self->plugins_group), "Plugins");
+  adw_preferences_group_set_description (ADW_PREFERENCES_GROUP (self->plugins_group),
+                                         "Switched-off plugins are not offered to the device");
   build_plugin_switches (self);
-  adw_preferences_page_add (ADW_PREFERENCES_PAGE (page), ADW_PREFERENCES_GROUP (self->plugins_group));
+  gtk_box_append (GTK_BOX (self->tab_boxes[G_N_ELEMENTS (tabs) - 1]), self->plugins_group);
+  (void) plugins_page;
+
+  adw_view_switcher_set_stack (ADW_VIEW_SWITCHER (switcher), ADW_VIEW_STACK (self->stack));
+  adw_view_switcher_set_policy (ADW_VIEW_SWITCHER (switcher), ADW_VIEW_SWITCHER_POLICY_WIDE);
+  adw_header_bar_set_title_widget (ADW_HEADER_BAR (header), switcher);
+  adw_view_switcher_bar_set_stack (ADW_VIEW_SWITCHER_BAR (switcher_bar), ADW_VIEW_STACK (self->stack));
 
   gtk_box_append (GTK_BOX (content), self->banner);
-  gtk_widget_set_vexpand (page, TRUE);
-  gtk_box_append (GTK_BOX (content), page);
-  adw_toolbar_view_add_top_bar (ADW_TOOLBAR_VIEW (toolbar), adw_header_bar_new ());
+  gtk_widget_set_vexpand (self->stack, TRUE);
+  gtk_box_append (GTK_BOX (content), self->stack);
+  adw_toolbar_view_add_top_bar (ADW_TOOLBAR_VIEW (toolbar), header);
+  adw_toolbar_view_add_bottom_bar (ADW_TOOLBAR_VIEW (toolbar), switcher_bar);
   adw_toolbar_view_set_content (ADW_TOOLBAR_VIEW (toolbar), content);
   adw_navigation_page_set_child (ADW_NAVIGATION_PAGE (self), toolbar);
 
