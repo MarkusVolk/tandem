@@ -63,9 +63,9 @@ update (TandemGuiDevicePage *self)
 
   adw_navigation_page_set_title (ADW_NAVIGATION_PAGE (self), tandem_gui_device_get_name (device));
   adw_action_row_set_subtitle (ADW_ACTION_ROW (self->status_row),
-                               reachable ? "Connected"
-                                         : tandem_gui_device_is_paused (device) ? "Disconnected"
-                                         : paired ? "Paired, not reachable" : "Not reachable");
+                               !paired ? (reachable ? "Available, not paired" : "Not reachable")
+                               : reachable ? "Connected"
+                               : tandem_gui_device_is_paused (device) ? "Disconnected" : "Paired, not reachable");
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->connect_row),
                                  tandem_gui_device_is_paused (device) ? "Connect" : "Disconnect");
   adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (self->connect_row),
