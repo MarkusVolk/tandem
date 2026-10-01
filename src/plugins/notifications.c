@@ -147,8 +147,10 @@ sent_cb (GObject *source, GAsyncResult *result, gpointer user_data)
 static void
 show_notification (RemoteNotification *n, const char *icon_path)
 {
-  g_autoptr(TandemNotification) notification = tandem_notification_new (n->title, n->text);
   TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (n->plugin));
+  const char *summary = n->title != NULL && *n->title != '\0' ? n->title : n->app_name;
+  const char *body = n->title != NULL && *n->title != '\0' ? n->app_name : "";
+  g_autoptr(TandemNotification) notification = tandem_notification_new (summary, body);
 
   if (icon_path != NULL)
     tandem_notification_set_image (notification, icon_path);
