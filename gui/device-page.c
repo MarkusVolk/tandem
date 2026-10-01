@@ -11,6 +11,7 @@ struct _TandemGuiDevicePage
   GtkWidget *key_row;
   GtkWidget *unpair_row;
   GtkWidget *actions_group;
+  GtkWidget *ring_row;
   GtkWidget *plugins_group;
   GtkWidget *stack;
   GtkWidget *tab_boxes[5];
@@ -36,7 +37,7 @@ static int
 tab_for_plugin (const char *plugin)
 {
   static const struct { const char *plugin; int tab; } map[] = {
-    { "battery", 0 }, { "connectivity", 0 }, { "lock", 0 }, { "findmyphone", 0 },
+    { "battery", 0 }, { "connectivity", 0 }, { "lock", 0 },
     { "sms", 1 }, { "notifications", 1 }, { "contacts", 1 }, { "telephony", 1 },
     { "share", 2 }, { "clipboard", 2 }, { "sendnotifications", 2 },
     { "remoteinput", 3 }, { "runcommand", 3 }, { "mousepad", 3 },
@@ -88,6 +89,7 @@ update (TandemGuiDevicePage *self)
 
   gtk_widget_set_visible (self->unpair_row, paired);
   gtk_widget_set_visible (self->actions_group, paired);
+  gtk_widget_set_visible (self->ring_row, tandem_gui_device_has_plugin (device, "findmyphone"));
   gtk_widget_set_sensitive (self->actions_group, reachable);
 }
 
@@ -109,6 +111,12 @@ static void
 unpair_activated_cb (AdwActionRow *row, gpointer user_data)
 {
   tandem_gui_device_call (TANDEM_GUI_DEVICE_PAGE (user_data)->device, "Unpair", NULL);
+}
+
+static void
+ring_activated_cb (AdwActionRow *row, gpointer user_data)
+{
+  tandem_gui_device_call_plugin (TANDEM_GUI_DEVICE_PAGE (user_data)->device, "findmyphone", "ring", NULL);
 }
 
 static void
@@ -258,8 +266,14 @@ tandem_gui_device_page_new (TandemGuiDevice *device)
   gtk_box_prepend (GTK_BOX (self->tab_boxes[0]), status_group);
   self->actions_group = adw_preferences_group_new ();
   adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (self->actions_group), "Actions");
+  self->ring_row = adw_button_row_new ();
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->ring_row), "Ring the device");
+  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (self->ring_row), "audio-volume-high-symbolic");
+  g_signal_connect (self->ring_row, "activated", G_CALLBACK (ring_activated_cb), self);
+  adw_preferences_group_add (ADW_PREFERENCES_GROUP (self->actions_group), self->ring_row);
   ping_row = adw_button_row_new ();
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (ping_row), "Send ping");
+  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (ping_row), "network-transmit-symbolic");
   g_signal_connect (ping_row, "activated", G_CALLBACK (ping_activated_cb), self);
   adw_preferences_group_add (ADW_PREFERENCES_GROUP (self->actions_group), ping_row);
   gtk_box_insert_child_after (GTK_BOX (self->tab_boxes[0]), self->actions_group, status_group);
