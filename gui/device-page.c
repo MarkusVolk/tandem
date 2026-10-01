@@ -10,6 +10,7 @@ struct _TandemGuiDevicePage
   GtkWidget *status_row;
   GtkWidget *key_row;
   GtkWidget *unpair_row;
+  GtkWidget *connect_row;
   GtkWidget *actions_group;
   GtkWidget *ring_row;
   GtkWidget *plugins_group;
@@ -62,7 +63,14 @@ update (TandemGuiDevicePage *self)
 
   adw_navigation_page_set_title (ADW_NAVIGATION_PAGE (self), tandem_gui_device_get_name (device));
   adw_action_row_set_subtitle (ADW_ACTION_ROW (self->status_row),
-                               reachable ? "Connected" : (paired ? "Paired, not reachable" : "Not reachable"));
+                               reachable ? "Connected"
+                                         : tandem_gui_device_is_paused (device) ? "Disconnected"
+                                         : paired ? "Paired, not reachable" : "Not reachable");
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->connect_row),
+                                 tandem_gui_device_is_paused (device) ? "Connect" : "Disconnect");
+  adw_button_row_set_start_icon_name (ADW_BUTTON_ROW (self->connect_row),
+                                      tandem_gui_device_is_paused (device) ? "network-transmit-receive-symbolic" : "network-offline-symbolic");
+  gtk_widget_set_visible (self->connect_row, paired);
   adw_action_row_set_subtitle (ADW_ACTION_ROW (self->key_row), key != NULL ? key : "");
   gtk_widget_set_visible (self->key_row, g_str_equal (state, "requested") || g_str_equal (state, "requested-by-peer"));
 
@@ -105,6 +113,14 @@ banner_clicked_cb (AdwBanner *banner, gpointer user_data)
     tandem_gui_device_call (self->device, "RejectPair", NULL);
   else
     tandem_gui_device_call (self->device, "Pair", NULL);
+}
+
+static void
+connect_activated_cb (AdwActionRow *row, gpointer user_data)
+{
+  TandemGuiDevice *device = TANDEM_GUI_DEVICE_PAGE (user_data)->device;
+
+  tandem_gui_device_call (device, tandem_gui_device_is_paused (device) ? "Connect" : "Disconnect", NULL);
 }
 
 static void
@@ -259,6 +275,9 @@ tandem_gui_device_page_new (TandemGuiDevice *device)
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->key_row), "Verification key");
   adw_action_row_set_subtitle_selectable (ADW_ACTION_ROW (self->key_row), TRUE);
   adw_preferences_group_add (ADW_PREFERENCES_GROUP (status_group), self->key_row);
+  self->connect_row = adw_button_row_new ();
+  g_signal_connect (self->connect_row, "activated", G_CALLBACK (connect_activated_cb), self);
+  adw_preferences_group_add (ADW_PREFERENCES_GROUP (status_group), self->connect_row);
   self->unpair_row = adw_button_row_new ();
   adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->unpair_row), "Unpair");
   g_signal_connect (self->unpair_row, "activated", G_CALLBACK (unpair_activated_cb), self);

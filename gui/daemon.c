@@ -144,6 +144,7 @@ const char *tandem_gui_device_get_type_name (TandemGuiDevice *self) { return pro
 const char *tandem_gui_device_get_state (TandemGuiDevice *self) { return prop_string (self, "PairState", "unpaired"); }
 gboolean tandem_gui_device_is_paired (TandemGuiDevice *self) { return prop_bool (self, "Paired"); }
 gboolean tandem_gui_device_is_reachable (TandemGuiDevice *self) { return prop_bool (self, "Reachable"); }
+gboolean tandem_gui_device_is_paused (TandemGuiDevice *self) { return prop_bool (self, "Paused"); }
 
 char *
 tandem_gui_device_get_key (TandemGuiDevice *self)

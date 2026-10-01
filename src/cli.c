@@ -29,6 +29,7 @@ usage (void)
            "  unpair <dev>      forget a paired device\n"
            "  ping <dev> [msg]  send a ping\n"
            "  key <dev>         show the verification key during pairing\n"
+           "  disconnect|connect <dev>  drop the connection and keep it off, or allow it again\n"
            "  ring <dev>        make the device ring\n"
            "  share <dev> <file>... | <url>   send files or a URL\n"
            "  text <dev> <text> send a text snippet\n"
@@ -383,6 +384,10 @@ tandem_cli_run (int argc, char **argv)
     return cmd_device (argv[2], "Unpair", NULL, NULL);
   if (argc > 2 && g_str_equal (command, "ping"))
     return cmd_device (argv[2], "Ping", g_variant_new ("(s)", argc > 3 ? argv[3] : ""), NULL);
+  if (argc > 2 && g_str_equal (command, "disconnect"))
+    return cmd_device (argv[2], "Disconnect", NULL, NULL);
+  if (argc > 2 && g_str_equal (command, "connect"))
+    return cmd_device (argv[2], "Connect", NULL, NULL);
   if (argc > 2 && g_str_equal (command, "ring"))
     return cmd_device (argv[2], "Ring", NULL, NULL);
   if (argc > 3 && g_str_equal (command, "share"))

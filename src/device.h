@@ -31,6 +31,8 @@ const char      *tandem_device_get_type_name     (TandemDevice *self);
 gint64           tandem_device_get_protocol_version (TandemDevice *self);
 gboolean         tandem_device_is_reachable      (TandemDevice *self);
 gboolean         tandem_device_is_paired         (TandemDevice *self);
+gboolean         tandem_device_is_paused         (TandemDevice *self);
+void             tandem_device_set_paused        (TandemDevice *self, gboolean paused);
 TandemPairState  tandem_device_get_pair_state    (TandemDevice *self);
 const char      *tandem_device_get_state_name    (TandemDevice *self);
 char            *tandem_device_get_verification_key (TandemDevice *self);

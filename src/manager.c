@@ -104,7 +104,7 @@ update_periodic (TandemManager *self)
     {
       g_autoptr(TandemDevice) device = g_list_model_get_item (G_LIST_MODEL (self->devices), i);
 
-      if (tandem_device_is_paired (device) && !tandem_device_is_reachable (device))
+      if (tandem_device_is_paired (device) && !tandem_device_is_reachable (device) && !tandem_device_is_paused (device))
         wanted = TRUE;
     }
   tandem_lan_set_periodic (self->lan, wanted);

@@ -28,6 +28,7 @@ struct _TandemDevice
   gint64 pair_timestamp;
   guint pair_timeout_id;
   gboolean rejected_unpaired_packet;
+  gboolean paused;
   GPtrArray *plugins;
   GPtrArray *uploads;
 };
@@ -715,11 +716,35 @@ link_closed_cb (TandemLink *link, gpointer user_data)
   g_signal_emit (self, signals[CHANGED], 0);
 }
 
+gboolean
+tandem_device_is_paused (TandemDevice *self)
+{
+  return self->paused;
+}
+
+void
+tandem_device_set_paused (TandemDevice *self, gboolean paused)
+{
+  if (self->paused == paused)
+    return;
+  self->paused = paused;
+  if (paused)
+    tandem_device_set_link (self, NULL);
+  else
+    g_signal_emit (self, signals[CHANGED], 0);
+}
+
 void
 tandem_device_set_link (TandemDevice *self, TandemLink *link)
 {
   if (self->link == link)
     return;
+  if (link != NULL && self->paused)
+    {
+      g_debug ("device %s is disconnected on request, closing the new link", self->id);
+      tandem_link_close (link);
+      return;
+    }
   if (self->link != NULL)
     {
       TandemLink *old = g_steal_pointer (&self->link);

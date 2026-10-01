@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Tandem
+GenericName=Phone Integration
+Comment=Connect your phone with the KDE Connect protocol
+Exec=tandem-kirigami
+Icon=de.flk.Tandem
+Terminal=false
+Type=Application
+Categories=Qt;KDE;Network;Utility;
+Keywords=phone;kdeconnect;sms;notifications;
+DBusActivatable=true
+StartupNotify=true
+X-DBUS-ServiceName=de.flk.Tandem

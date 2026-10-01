@@ -41,7 +41,7 @@ device_subtitle (TandemGuiDevice *device)
   if (g_str_equal (state, "paired-reachable"))
     return "Connected";
   if (g_str_equal (state, "paired"))
-    return "Paired, not reachable";
+    return tandem_gui_device_is_paused (device) ? "Disconnected" : "Paired, not reachable";
   if (g_str_equal (state, "requested"))
     return "Pairing requested";
   if (g_str_equal (state, "requested-by-peer"))

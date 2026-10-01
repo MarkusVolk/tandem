@@ -30,6 +30,7 @@ const char       *tandem_gui_device_get_state       (TandemGuiDevice *self);
 char             *tandem_gui_device_get_key         (TandemGuiDevice *self);
 gboolean          tandem_gui_device_is_paired       (TandemGuiDevice *self);
 gboolean          tandem_gui_device_is_reachable    (TandemGuiDevice *self);
+gboolean          tandem_gui_device_is_paused       (TandemGuiDevice *self);
 GStrv             tandem_gui_device_get_plugins     (TandemGuiDevice *self);
 gboolean          tandem_gui_device_has_plugin      (TandemGuiDevice *self, const char *plugin);
 GSettings        *tandem_gui_device_get_settings    (TandemGuiDevice *self);

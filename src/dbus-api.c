@@ -41,6 +41,7 @@ static const char device_xml[] =
   "    <property name='Type' type='s' access='read'/>"
   "    <property name='Paired' type='b' access='read'/>"
   "    <property name='Reachable' type='b' access='read'/>"
+  "    <property name='Paused' type='b' access='read'/>"
   "    <property name='PairState' type='s' access='read'/>"
   "    <property name='VerificationKey' type='s' access='read'/>"
   "    <property name='Plugins' type='as' access='read'/>"
@@ -48,6 +49,8 @@ static const char device_xml[] =
   "    <method name='AcceptPair'/>"
   "    <method name='RejectPair'/>"
   "    <method name='Unpair'/>"
+  "    <method name='Disconnect'/>"
+  "    <method name='Connect'/>"
   "    <method name='Ping'>"
   "      <arg type='s' name='message' direction='in'/>"
   "    </method>"
@@ -92,6 +95,7 @@ static GDBusNodeInfo *manager_info;
 static GDBusNodeInfo *device_info;
 static guint manager_registration;
 static GDBusConnection *api_connection;
+static TandemApp *api_app;
 static GHashTable *device_registrations;
 
 static GVariant *
@@ -247,6 +251,8 @@ device_get_property (GDBusConnection  *connection,
     return g_variant_new_string (tandem_device_get_type_name (device));
   if (g_str_equal (property_name, "Paired"))
     return g_variant_new_boolean (tandem_device_is_paired (device));
+  if (g_str_equal (property_name, "Paused"))
+    return g_variant_new_boolean (tandem_device_is_paused (device));
   if (g_str_equal (property_name, "Reachable"))
     return g_variant_new_boolean (tandem_device_is_reachable (device));
   if (g_str_equal (property_name, "PairState"))
@@ -294,6 +300,13 @@ device_method_call (GDBusConnection       *connection,
     tandem_device_reject_pair (device);
   else if (g_str_equal (method_name, "Unpair"))
     tandem_device_unpair (device);
+  else if (g_str_equal (method_name, "Disconnect"))
+    tandem_device_set_paused (device, TRUE);
+  else if (g_str_equal (method_name, "Connect"))
+    {
+      tandem_device_set_paused (device, FALSE);
+      tandem_app_refresh (api_app);
+    }
   else if (g_str_equal (method_name, "Ping"))
     {
       const char *message;
@@ -546,6 +559,7 @@ tandem_dbus_api_register (GDBusConnection *connection, TandemApp *app, GError **
   if (manager_registration == 0)
     return FALSE;
   api_connection = connection;
+  api_app = app;
   return TRUE;
 }
 
@@ -615,6 +629,7 @@ tandem_dbus_api_device_changed (TandemDevice *device)
   g_variant_builder_add (&changed, "{sv}", "Name", g_variant_new_string (tandem_device_get_name (device)));
   g_variant_builder_add (&changed, "{sv}", "Paired", g_variant_new_boolean (tandem_device_is_paired (device)));
   g_variant_builder_add (&changed, "{sv}", "Reachable", g_variant_new_boolean (tandem_device_is_reachable (device)));
+  g_variant_builder_add (&changed, "{sv}", "Paused", g_variant_new_boolean (tandem_device_is_paused (device)));
   g_variant_builder_add (&changed, "{sv}", "PairState", g_variant_new_string (tandem_device_get_state_name (device)));
   g_variant_builder_add (&changed, "{sv}", "VerificationKey", g_variant_new_string (key != NULL ? key : ""));
   g_variant_builder_add (&changed, "{sv}", "Plugins", plugin_names (device));
