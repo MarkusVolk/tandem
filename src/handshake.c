@@ -22,6 +22,7 @@ typedef struct
   gboolean we_connected;
   gboolean trusted;
   GCancellable *cancellable;
+  GCancellable *outer_cancellable;
   gulong cancel_handler;
   guint timeout_id;
 } Handshake;
@@ -32,7 +33,8 @@ handshake_free (Handshake *hs)
   if (hs->timeout_id != 0)
     g_source_remove (hs->timeout_id);
   if (hs->cancel_handler != 0)
-    g_cancellable_disconnect (hs->cancellable, hs->cancel_handler);
+    g_cancellable_disconnect (hs->outer_cancellable, hs->cancel_handler);
+  g_clear_object (&hs->outer_cancellable);
   g_clear_object (&hs->cancellable);
   g_clear_object (&hs->reader);
   g_clear_object (&hs->tls);
@@ -353,8 +355,11 @@ handshake_task_new (TandemConfig        *config,
   hs->identity_data = identity_data;
   hs->cancellable = g_cancellable_new ();
   if (cancellable != NULL)
-    hs->cancel_handler = g_cancellable_connect (cancellable, G_CALLBACK (outer_cancelled_cb),
-                                                g_object_ref (hs->cancellable), g_object_unref);
+    {
+      hs->outer_cancellable = g_object_ref (cancellable);
+      hs->cancel_handler = g_cancellable_connect (cancellable, G_CALLBACK (outer_cancelled_cb),
+                                                  g_object_ref (hs->cancellable), g_object_unref);
+    }
   hs->timeout_id = g_timeout_add_seconds (HANDSHAKE_TIMEOUT_SECONDS, handshake_timeout, hs);
   g_task_set_task_data (task, hs, (GDestroyNotify) handshake_free);
   return task;

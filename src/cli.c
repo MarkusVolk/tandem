@@ -2,6 +2,7 @@
 #include "cli.h"
 #include "config.h"
 #include "dbus-api.h"
+#include "util.h"
 
 #include <gio/gio.h>
 #include <stdio.h>
@@ -20,6 +21,12 @@ usage (void)
            "  my-id             this machine's device id\n"
            "  refresh           broadcast the identity again\n"
            "  monitor           print device changes until interrupted\n"
+           "  pair <dev>        request pairing, or accept a pending request\n"
+           "  accept <dev>      accept a pairing request\n"
+           "  reject <dev>      reject a pairing request\n"
+           "  unpair <dev>      forget a paired device\n"
+           "  ping <dev> [msg]  send a ping\n"
+           "  key <dev>         show the verification key during pairing\n"
            "  show              open the window\n"
            "  quit              stop the service\n"
            "  --smoke-test      check the build and the host without a phone\n");
@@ -173,6 +180,95 @@ cmd_monitor (void)
   return 0;
 }
 
+static char *
+resolve_device (GDBusConnection *bus, const char *wanted, GError **error)
+{
+  g_autoptr(GVariant) reply = call_manager (bus, "ListDevices", NULL, "(a{sa{sv}})", error);
+  g_autoptr(GVariant) devices = NULL;
+  GVariantIter iter;
+  const char *id;
+  GVariant *props;
+  char *match = NULL;
+
+  if (reply == NULL)
+    return NULL;
+  devices = g_variant_get_child_value (reply, 0);
+  g_variant_iter_init (&iter, devices);
+  while (g_variant_iter_loop (&iter, "{&s@a{sv}}", &id, &props))
+    {
+      const char *name = "";
+
+      g_variant_lookup (props, "name", "&s", &name);
+      if (g_str_equal (id, wanted))
+        {
+          g_free (match);
+          match = g_strdup (id);
+          break;
+        }
+      if (g_str_has_prefix (id, wanted) || g_str_equal (name, wanted))
+        {
+          g_free (match);
+          match = g_strdup (id);
+        }
+    }
+  if (match == NULL)
+    g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "No device matches %s", wanted);
+  return match;
+}
+
+static int
+cmd_device (const char *wanted, const char *method, GVariant *parameters, const char *property)
+{
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GDBusConnection) bus = session_bus (&error);
+  g_autofree char *id = NULL;
+  g_autofree char *path = NULL;
+  g_autoptr(GVariant) reply = NULL;
+
+  if (parameters != NULL)
+    g_variant_ref_sink (parameters);
+  if (bus == NULL)
+    {
+      g_clear_pointer (&parameters, g_variant_unref);
+      return fail (error);
+    }
+  id = resolve_device (bus, wanted, &error);
+  if (id == NULL)
+    {
+      g_clear_pointer (&parameters, g_variant_unref);
+      return fail (error);
+    }
+  path = tandem_object_path_for_id (id);
+  if (method != NULL)
+    {
+      reply = g_dbus_connection_call_sync (bus, TANDEM_DBUS_NAME, path, TANDEM_DBUS_DEVICE_IFACE, method,
+                                           parameters, NULL, G_DBUS_CALL_FLAGS_NONE, 30000, NULL, &error);
+      g_clear_pointer (&parameters, g_variant_unref);
+      if (reply == NULL)
+        return fail (error);
+    }
+  if (property != NULL)
+    {
+      g_autoptr(GVariant) value = NULL;
+
+      reply = g_dbus_connection_call_sync (bus, TANDEM_DBUS_NAME, path, "org.freedesktop.DBus.Properties", "Get",
+                                           g_variant_new ("(ss)", TANDEM_DBUS_DEVICE_IFACE, property),
+                                           G_VARIANT_TYPE ("(v)"), G_DBUS_CALL_FLAGS_NONE, 30000, NULL, &error);
+      if (reply == NULL)
+        return fail (error);
+      g_variant_get (reply, "(v)", &value);
+      if (g_variant_is_of_type (value, G_VARIANT_TYPE_STRING))
+        printf ("%s\n", g_variant_get_string (value, NULL));
+      else
+        {
+          g_autofree char *text = g_variant_print (value, FALSE);
+
+          printf ("%s\n", text);
+        }
+    }
+  return 0;
+}
+
 int
 tandem_cli_run (int argc, char **argv)
 {
@@ -190,6 +286,18 @@ tandem_cli_run (int argc, char **argv)
     return cmd_simple ("Show");
   if (g_str_equal (command, "quit"))
     return cmd_simple ("Quit");
+  if (argc > 2 && g_str_equal (command, "pair"))
+    return cmd_device (argv[2], "Pair", NULL, NULL);
+  if (argc > 2 && g_str_equal (command, "accept"))
+    return cmd_device (argv[2], "AcceptPair", NULL, NULL);
+  if (argc > 2 && g_str_equal (command, "reject"))
+    return cmd_device (argv[2], "RejectPair", NULL, NULL);
+  if (argc > 2 && g_str_equal (command, "unpair"))
+    return cmd_device (argv[2], "Unpair", NULL, NULL);
+  if (argc > 2 && g_str_equal (command, "ping"))
+    return cmd_device (argv[2], "Ping", g_variant_new ("(s)", argc > 3 ? argv[3] : ""), NULL);
+  if (argc > 2 && g_str_equal (command, "key"))
+    return cmd_device (argv[2], NULL, NULL, "VerificationKey");
   if (g_str_equal (command, "help"))
     {
       usage ();

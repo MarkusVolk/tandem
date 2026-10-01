@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "app.h"
 #include "dbus-api.h"
+#include "notify.h"
 #include "ui/window.h"
 #include "tandem-build.h"
 
@@ -87,20 +88,73 @@ tandem_app_describe_devices (TandemApp *self, GVariantBuilder *builder)
 }
 
 static void
+pair_action_cb (guint32 id, const char *action, const char *reply, gpointer user_data)
+{
+  TandemDevice *device = user_data;
+
+  if (g_str_equal (action, "accept"))
+    tandem_device_accept_pair (device);
+  else if (g_str_equal (action, "reject"))
+    tandem_device_reject_pair (device);
+  tandem_notify_close (id);
+}
+
+static void
+pair_request_cb (TandemDevice *device, gpointer user_data)
+{
+  TandemApp *self = user_data;
+  g_autofree char *key = tandem_device_get_verification_key (device);
+  g_autofree char *summary = g_strdup_printf ("Pair with %s?", tandem_device_get_name (device));
+  g_autofree char *body = g_strdup_printf ("Verification key: %s", key != NULL ? key : "?");
+  g_autoptr(TandemNotification) notification = tandem_notification_new (summary, body);
+
+  if (self->window != NULL && gtk_widget_get_visible (GTK_WIDGET (self->window)))
+    gtk_window_present (self->window);
+
+  tandem_notification_set_icon (notification, "phone-symbolic");
+  tandem_notification_set_urgency (notification, 2);
+  tandem_notification_set_timeout (notification, 30000);
+  tandem_notification_add_action (notification, "accept", "Accept");
+  tandem_notification_add_action (notification, "reject", "Reject");
+  tandem_notification_set_callbacks (notification, pair_action_cb, NULL, g_object_ref (device), g_object_unref);
+  tandem_notification_send (notification);
+}
+
+static void
+pair_failed_cb (TandemDevice *device, const char *reason, gpointer user_data)
+{
+  g_autofree char *summary = g_strdup_printf ("Pairing with %s failed", tandem_device_get_name (device));
+  g_autoptr(TandemNotification) notification = tandem_notification_new (summary, reason);
+
+  tandem_notification_set_icon (notification, "phone-symbolic");
+  tandem_notification_send (notification);
+}
+
+static void
 device_added_cb (TandemManager *manager, TandemDevice *device, gpointer user_data)
 {
+  TandemApp *self = user_data;
+
+  g_signal_connect (device, "pair-request", G_CALLBACK (pair_request_cb), self);
+  g_signal_connect (device, "pair-failed", G_CALLBACK (pair_failed_cb), self);
+  g_signal_connect_swapped (device, "plugins-changed", G_CALLBACK (tandem_dbus_api_device_changed), device);
+  tandem_dbus_api_add_device (device);
   tandem_dbus_api_notify_device ("DeviceAdded", tandem_device_get_id (device));
 }
 
 static void
 device_removed_cb (TandemManager *manager, TandemDevice *device, gpointer user_data)
 {
+  g_signal_handlers_disconnect_by_data (device, user_data);
+  g_signal_handlers_disconnect_by_func (device, tandem_dbus_api_device_changed, device);
+  tandem_dbus_api_remove_device (device);
   tandem_dbus_api_notify_device ("DeviceRemoved", tandem_device_get_id (device));
 }
 
 static void
 device_changed_cb (TandemManager *manager, TandemDevice *device, gpointer user_data)
 {
+  tandem_dbus_api_device_changed (device);
   tandem_dbus_api_notify_device ("DeviceChanged", tandem_device_get_id (device));
 }
 
@@ -175,6 +229,7 @@ tandem_app_dbus_register (GApplication     *application,
   if (!G_APPLICATION_CLASS (tandem_app_parent_class)->dbus_register (application, connection,
                                                                       object_path, error))
     return FALSE;
+  tandem_notify_init (connection);
   return tandem_dbus_api_register (connection, TANDEM_APP (application), error);
 }
 

@@ -6,6 +6,7 @@
 #include "config.h"
 #include "link.h"
 #include "packet.h"
+#include "plugin.h"
 
 G_BEGIN_DECLS
 
@@ -31,9 +32,11 @@ gboolean         tandem_device_is_reachable      (TandemDevice *self);
 gboolean         tandem_device_is_paired         (TandemDevice *self);
 TandemPairState  tandem_device_get_pair_state    (TandemDevice *self);
 const char      *tandem_device_get_state_name    (TandemDevice *self);
+char            *tandem_device_get_verification_key (TandemDevice *self);
 GTlsCertificate *tandem_device_get_certificate   (TandemDevice *self);
 TandemLink      *tandem_device_get_link          (TandemDevice *self);
 GInetAddress    *tandem_device_get_last_address  (TandemDevice *self);
+GSettings       *tandem_device_get_settings      (TandemDevice *self);
 const char *const *tandem_device_get_incoming    (TandemDevice *self);
 const char *const *tandem_device_get_outgoing    (TandemDevice *self);
 gboolean         tandem_device_has_incoming      (TandemDevice *self, const char *type);
@@ -41,5 +44,15 @@ gboolean         tandem_device_has_outgoing      (TandemDevice *self, const char
 
 void             tandem_device_set_link          (TandemDevice *self, TandemLink *link);
 void             tandem_device_send_packet       (TandemDevice *self, TandemPacket *packet);
+
+void             tandem_device_request_pair      (TandemDevice *self);
+void             tandem_device_accept_pair       (TandemDevice *self);
+void             tandem_device_reject_pair       (TandemDevice *self);
+void             tandem_device_unpair            (TandemDevice *self);
+
+GPtrArray       *tandem_device_get_plugins       (TandemDevice *self);
+TandemPlugin    *tandem_device_get_plugin        (TandemDevice *self, const char *name);
+gboolean         tandem_device_plugin_is_enabled (TandemDevice *self, const char *name);
+void             tandem_device_set_plugin_enabled (TandemDevice *self, const char *name, gboolean enabled);
 
 G_END_DECLS

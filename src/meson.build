@@ -10,10 +10,14 @@ tandem_sources = files(
   'lan.c',
   'device.c',
   'manager.c',
+  'plugin.c',
+  'notify.c',
+  'plugins/ping.c',
   'dbus-api.c',
   'cli.c',
   'smoke.c',
   'ui/window.c',
+  'ui/device-page.c',
 )
 
 tandem_deps = [

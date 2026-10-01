@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "manager.h"
+#include "plugin.h"
 
 #include <string.h>
 
@@ -24,11 +25,6 @@ enum {
 static guint signals[N_SIGNALS];
 
 G_DEFINE_FINAL_TYPE (TandemManager, tandem_manager, G_TYPE_OBJECT)
-
-static const char *const capabilities[] = {
-  "kdeconnect.ping",
-  NULL
-};
 
 static void
 tandem_manager_dispose (GObject *object)
@@ -68,8 +64,12 @@ tandem_manager_new (TandemConfig *config)
   TandemManager *self = g_object_new (TANDEM_TYPE_MANAGER, NULL);
 
   self->config = g_object_ref (config);
+  g_auto(GStrv) incoming = NULL;
+  g_auto(GStrv) outgoing = NULL;
+
   self->lan = tandem_lan_new (config);
-  tandem_lan_set_capabilities (self->lan, capabilities, capabilities);
+  tandem_plugin_registry_capabilities (&incoming, &outgoing);
+  tandem_lan_set_capabilities (self->lan, (const char *const *) incoming, (const char *const *) outgoing);
   return self;
 }
 
