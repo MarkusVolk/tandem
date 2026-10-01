@@ -34,6 +34,7 @@ configure_file(output: 'tandem-build.h', configuration: config_h)
 config_inc = include_directories('.')
 
 add_project_arguments(
+  '-D_GNU_SOURCE',
   '-DG_LOG_DOMAIN="tandem"',
   '-DG_LOG_USE_STRUCTURED',
   '-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_76',
