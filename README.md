@@ -48,6 +48,15 @@ a status notifier item whose menu offers the common actions per device. `tandem`
 command, `tandem show` and the tray menu open the frontend; `tandem quit` or the tray menu stop
 the daemon.
 
+## Without a desktop session
+
+`tandemd.service` is a system unit for appliances such as a Kodi box without a user session: it
+puts the daemon on the system bus (`DBUS_SESSION_BUS_ADDRESS` pointing at the system socket, with
+the shipped bus policy) and stores settings with the GSettings keyfile backend. Point
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_CACHE_HOME` at persistent storage in a drop-in, pair
+with `tandem accept <device>` over SSH, and remote input goes through `/dev/uinput`. The `tandem`
+tool falls back to the system bus when there is no session bus.
+
 ## What works
 
 | Plugin | Direction | Notes |

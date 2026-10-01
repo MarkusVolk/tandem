@@ -53,7 +53,11 @@ usage (void)
 static GDBusConnection *
 session_bus (GError **error)
 {
-  return g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, error);
+  GDBusConnection *bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
+
+  if (bus == NULL)
+    bus = g_bus_get_sync (G_BUS_TYPE_SYSTEM, NULL, error);
+  return bus;
 }
 
 static GVariant *

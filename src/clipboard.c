@@ -12,9 +12,9 @@
 #include <gio/gunixoutputstream.h>
 #include <string.h>
 #include <unistd.h>
-#include <wayland-client.h>
 
 #ifdef TANDEM_HAVE_WAYLAND
+#include <wayland-client.h>
 #include "ext-data-control-v1-client-protocol.h"
 #endif
 

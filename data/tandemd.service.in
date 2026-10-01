@@ -1,0 +1,15 @@
+[Unit]
+Description=Tandem phone integration on the system bus
+After=dbus.service network.target
+Wants=network.target
+
+[Service]
+Type=dbus
+BusName=@APP_ID@.Daemon
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+Environment=GSETTINGS_BACKEND=keyfile
+ExecStart=@BINDIR@/tandemd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

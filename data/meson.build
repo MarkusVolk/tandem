@@ -44,6 +44,20 @@ configure_file(
   install_dir: systemd_user_unit_dir,
 )
 
+if systemd_dep.found()
+  systemd_system_unit_dir = systemd_dep.get_variable('systemdsystemunitdir', pkgconfig_define: ['prefix', prefix])
+else
+  systemd_system_unit_dir = prefix / 'lib/systemd/system'
+endif
+configure_file(
+  input: 'tandemd.service.in',
+  output: 'tandemd.service',
+  configuration: conf,
+  install: true,
+  install_dir: systemd_system_unit_dir,
+)
+install_data('de.flk.Tandem.Daemon.conf', install_dir: datadir / 'dbus-1/system.d')
+
 install_data('de.flk.Tandem.gschema.xml', install_dir: datadir / 'glib-2.0/schemas')
 gnome.compile_schemas(depend_files: files('de.flk.Tandem.gschema.xml'))
 
