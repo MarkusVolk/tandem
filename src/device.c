@@ -29,6 +29,7 @@ struct _TandemDevice
   guint pair_timeout_id;
   gboolean rejected_unpaired_packet;
   GPtrArray *plugins;
+  GPtrArray *uploads;
 };
 
 enum {
@@ -69,6 +70,7 @@ tandem_device_finalize (GObject *object)
   TandemDevice *self = TANDEM_DEVICE (object);
 
   g_clear_pointer (&self->plugins, g_ptr_array_unref);
+  g_clear_pointer (&self->uploads, g_ptr_array_unref);
   g_free (self->id);
   g_free (self->name);
   g_free (self->type);
@@ -102,6 +104,7 @@ static void
 tandem_device_init (TandemDevice *self)
 {
   self->plugins = g_ptr_array_new_with_free_func (g_object_unref);
+  self->uploads = g_ptr_array_new_with_free_func (g_object_unref);
 }
 
 static GStrv
@@ -746,6 +749,16 @@ tandem_device_set_link (TandemDevice *self, TandemLink *link)
   g_signal_emit (self, signals[CHANGED], 0);
 }
 
+static void
+upload_finished_cb (TandemTransfer *transfer, GError *error, gpointer user_data)
+{
+  TandemDevice *self = user_data;
+
+  if (error != NULL)
+    g_debug ("device %s: upload failed: %s", self->id, error->message);
+  g_ptr_array_remove (self->uploads, transfer);
+}
+
 void
 tandem_device_send_packet (TandemDevice *self, TandemPacket *packet)
 {
@@ -754,5 +767,45 @@ tandem_device_send_packet (TandemDevice *self, TandemPacket *packet)
       g_debug ("device %s unreachable, dropping %s", self->id, packet->type);
       return;
     }
+  if (packet->payload_stream != NULL)
+    {
+      g_autoptr(GError) error = NULL;
+      TandemTransfer *transfer = tandem_transfer_new_upload (self->config, tandem_device_get_certificate (self),
+                                                             packet->payload_stream, packet->payload_size);
+      guint16 port = 0;
+
+      if (!tandem_transfer_upload_start (transfer, &port, &error))
+        {
+          g_warning ("device %s: cannot offer the payload: %s", self->id, error->message);
+          g_object_unref (transfer);
+          return;
+        }
+      g_clear_pointer (&packet->transfer_info, json_object_unref);
+      packet->transfer_info = json_object_new ();
+      json_object_set_int_member (packet->transfer_info, "port", port);
+      g_signal_connect (transfer, "finished", G_CALLBACK (upload_finished_cb), self);
+      g_ptr_array_add (self->uploads, transfer);
+    }
   tandem_link_send (self->link, packet);
+}
+
+TandemTransfer *
+tandem_device_download (TandemDevice *self, TandemPacket *packet)
+{
+  g_autoptr(GInetAddress) address = NULL;
+  int port = tandem_packet_get_payload_port (packet);
+
+  if (self->link == NULL || port < 0)
+    return NULL;
+  address = tandem_link_get_remote_address (self->link);
+  if (address == NULL)
+    return NULL;
+  return tandem_transfer_new_download (self->config, tandem_device_get_certificate (self), address,
+                                       (guint16) port, packet->payload_size);
+}
+
+TandemConfig *
+tandem_device_get_config (TandemDevice *self)
+{
+  return self->config;
 }

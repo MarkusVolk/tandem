@@ -39,6 +39,7 @@ const char   *tandem_plugin_get_name     (TandemPlugin *self);
 const char   *tandem_plugin_get_title    (TandemPlugin *self);
 void          tandem_plugin_send         (TandemPlugin *self, TandemPacket *packet);
 gboolean      tandem_plugin_handles      (TandemPlugin *self, const char *type);
+void          tandem_plugin_changed      (TandemPlugin *self);
 
 const TandemPluginInfo *tandem_plugin_registry              (guint *n_plugins);
 void                    tandem_plugin_registry_capabilities (GStrv *incoming, GStrv *outgoing);

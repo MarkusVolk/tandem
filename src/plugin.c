@@ -18,12 +18,33 @@ enum {
 
 static GParamSpec *properties[N_PROPS];
 
+enum {
+  CHANGED,
+  N_SIGNALS
+};
+
+static guint signals[N_SIGNALS];
+
 G_DEFINE_ABSTRACT_TYPE_WITH_PRIVATE (TandemPlugin, tandem_plugin, G_TYPE_OBJECT)
 
 GType tandem_ping_plugin_get_type (void);
+GType tandem_battery_plugin_get_type (void);
+GType tandem_connectivity_plugin_get_type (void);
+GType tandem_findmyphone_plugin_get_type (void);
+GType tandem_lock_plugin_get_type (void);
+GType tandem_runcommand_plugin_get_type (void);
+GType tandem_notifications_plugin_get_type (void);
+GType tandem_share_plugin_get_type (void);
 
 static const TandemPluginInfo registry[] = {
   { "ping", tandem_ping_plugin_get_type },
+  { "battery", tandem_battery_plugin_get_type },
+  { "connectivity", tandem_connectivity_plugin_get_type },
+  { "findmyphone", tandem_findmyphone_plugin_get_type },
+  { "lock", tandem_lock_plugin_get_type },
+  { "runcommand", tandem_runcommand_plugin_get_type },
+  { "notifications", tandem_notifications_plugin_get_type },
+  { "share", tandem_share_plugin_get_type },
 };
 
 static void
@@ -79,6 +100,9 @@ tandem_plugin_class_init (TandemPluginClass *klass)
   properties[PROP_DEVICE] = g_param_spec_object ("device", NULL, NULL, G_TYPE_OBJECT,
                                                  G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
   g_object_class_install_properties (object_class, N_PROPS, properties);
+
+  signals[CHANGED] = g_signal_new ("changed", TANDEM_TYPE_PLUGIN, G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                   G_TYPE_NONE, 0);
 }
 
 static void
@@ -187,4 +211,10 @@ tandem_plugin_type_supports (GType type, TandemDevice *device)
     supported = tandem_device_has_incoming (device, *t);
   g_type_class_unref (klass);
   return supported;
+}
+
+void
+tandem_plugin_changed (TandemPlugin *self)
+{
+  g_signal_emit (self, signals[CHANGED], 0);
 }

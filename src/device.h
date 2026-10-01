@@ -7,6 +7,7 @@
 #include "link.h"
 #include "packet.h"
 #include "plugin.h"
+#include "transfer.h"
 
 G_BEGIN_DECLS
 
@@ -44,6 +45,8 @@ gboolean         tandem_device_has_outgoing      (TandemDevice *self, const char
 
 void             tandem_device_set_link          (TandemDevice *self, TandemLink *link);
 void             tandem_device_send_packet       (TandemDevice *self, TandemPacket *packet);
+TandemTransfer  *tandem_device_download          (TandemDevice *self, TandemPacket *packet);
+TandemConfig    *tandem_device_get_config        (TandemDevice *self);
 
 void             tandem_device_request_pair      (TandemDevice *self);
 void             tandem_device_accept_pair       (TandemDevice *self);
