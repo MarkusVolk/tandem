@@ -23,6 +23,7 @@ static const char manager_xml[] =
 
 static GDBusNodeInfo *manager_info;
 static guint manager_registration;
+static GDBusConnection *api_connection;
 
 static void
 manager_method_call (GDBusConnection       *connection,
@@ -86,7 +87,10 @@ tandem_dbus_api_register (GDBusConnection *connection, TandemApp *app, GError **
   manager_registration = g_dbus_connection_register_object (connection, TANDEM_DBUS_PATH,
                                                             manager_info->interfaces[0],
                                                             &manager_vtable, app, NULL, error);
-  return manager_registration != 0;
+  if (manager_registration == 0)
+    return FALSE;
+  api_connection = connection;
+  return TRUE;
 }
 
 void
@@ -97,4 +101,14 @@ tandem_dbus_api_unregister (GDBusConnection *connection)
       g_dbus_connection_unregister_object (connection, manager_registration);
       manager_registration = 0;
     }
+  api_connection = NULL;
+}
+
+void
+tandem_dbus_api_notify_device (const char *signal_name, const char *device_id)
+{
+  if (api_connection == NULL)
+    return;
+  g_dbus_connection_emit_signal (api_connection, NULL, TANDEM_DBUS_PATH, TANDEM_DBUS_MANAGER_IFACE,
+                                 signal_name, g_variant_new ("(s)", device_id), NULL);
 }

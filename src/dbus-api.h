@@ -12,7 +12,8 @@ G_BEGIN_DECLS
 
 typedef struct _TandemApp TandemApp;
 
-gboolean tandem_dbus_api_register   (GDBusConnection *connection, TandemApp *app, GError **error);
-void     tandem_dbus_api_unregister (GDBusConnection *connection);
+gboolean tandem_dbus_api_register      (GDBusConnection *connection, TandemApp *app, GError **error);
+void     tandem_dbus_api_unregister    (GDBusConnection *connection);
+void     tandem_dbus_api_notify_device (const char *signal_name, const char *device_id);
 
 G_END_DECLS
