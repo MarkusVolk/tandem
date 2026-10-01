@@ -39,6 +39,7 @@ add_project_arguments(
   '-DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_14',
   '-DADW_VERSION_MIN_REQUIRED=ADW_VERSION_1_5',
   '-Wno-unused-parameter',
+  '-Wno-missing-field-initializers',
   language: 'c',
 )
 

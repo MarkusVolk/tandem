@@ -46,7 +46,7 @@ check_config (const char *dir)
   report (g_strcmp0 (cn, tandem_config_get_device_id (config)) == 0, "cert: common name is the device id", cn);
 
   tandem_cert_describe_key (tandem_config_get_certificate (config), &algorithm, &bits);
-  report (g_strcmp0 (algorithm, "EC") == 0 && bits == 256, "cert: EC P-256 key", algorithm);
+  report (algorithm != NULL && g_str_has_prefix (algorithm, "EC") && bits == 256, "cert: EC P-256 key", algorithm);
 
   tandem_cert_validity (tandem_config_get_certificate (config), &not_before, &not_after);
   report (not_before < now - 360 * 86400 && not_before > now - 370 * 86400 &&

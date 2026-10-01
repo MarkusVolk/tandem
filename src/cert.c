@@ -3,6 +3,7 @@
 #include "util.h"
 
 #include <gnutls/abstract.h>
+#include <gnutls/crypto.h>
 #include <gnutls/gnutls.h>
 #include <gnutls/x509.h>
 #include <string.h>
