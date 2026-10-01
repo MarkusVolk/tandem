@@ -22,6 +22,7 @@ gnutls_dep = dependency('gnutls')
 pulse_dep = dependency('libpulse-mainloop-glib')
 wayland_dep = dependency('wayland-client')
 xkb_dep = dependency('xkbcommon')
+gst_dep = dependency('gstreamer-1.0')
 m_dep = cc.find_library('m', required: false)
 
 config_h = configuration_data()

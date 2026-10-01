@@ -13,6 +13,7 @@ tandem_sources = files(
   'plugin.c',
   'notify.c',
   'transfer.c',
+  'sni.c',
   'plugins/ping.c',
   'plugins/battery.c',
   'plugins/connectivity.c',
@@ -39,6 +40,7 @@ tandem_deps = [
   pulse_dep,
   wayland_dep,
   xkb_dep,
+  gst_dep,
   m_dep,
   protocols_dep,
 ]

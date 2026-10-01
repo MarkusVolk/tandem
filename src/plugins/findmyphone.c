@@ -4,6 +4,7 @@
 #include "../plugin.h"
 
 #include <adwaita.h>
+#include <gst/gst.h>
 
 #define RING_SECONDS 60
 #define RING_SOUND "/usr/share/sounds/freedesktop/stereo/phone-incoming-call.oga"
@@ -15,7 +16,8 @@ struct _TandemFindmyphonePlugin
 {
   TandemPlugin parent_instance;
 
-  GtkMediaStream *stream;
+  GstElement *player;
+  guint bus_watch;
   guint stop_id;
   guint32 notification_id;
 };
@@ -28,16 +30,42 @@ static void
 stop_ringing (TandemFindmyphonePlugin *self)
 {
   g_clear_handle_id (&self->stop_id, g_source_remove);
-  if (self->stream != NULL)
+  g_clear_handle_id (&self->bus_watch, g_source_remove);
+  if (self->player != NULL)
     {
-      gtk_media_stream_pause (self->stream);
-      g_clear_object (&self->stream);
+      gst_element_set_state (self->player, GST_STATE_NULL);
+      g_clear_pointer (&self->player, gst_object_unref);
     }
   if (self->notification_id != 0)
     {
       tandem_notify_close (self->notification_id);
       self->notification_id = 0;
     }
+}
+
+static gboolean
+bus_cb (GstBus *bus, GstMessage *message, gpointer user_data)
+{
+  TandemFindmyphonePlugin *self = user_data;
+
+  switch (GST_MESSAGE_TYPE (message))
+    {
+    case GST_MESSAGE_EOS:
+      gst_element_seek_simple (self->player, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, 0);
+      break;
+    case GST_MESSAGE_ERROR:
+      {
+        g_autoptr(GError) error = NULL;
+
+        gst_message_parse_error (message, &error, NULL);
+        g_warning ("findmyphone: playback failed: %s", error->message);
+        gst_element_set_state (self->player, GST_STATE_NULL);
+      }
+      break;
+    default:
+      break;
+    }
+  return G_SOURCE_CONTINUE;
 }
 
 static gboolean
@@ -74,10 +102,19 @@ start_ringing (TandemFindmyphonePlugin *self)
   stop_ringing (self);
   if (g_file_test (RING_SOUND, G_FILE_TEST_EXISTS))
     {
-      self->stream = gtk_media_file_new_for_filename (RING_SOUND);
-      gtk_media_stream_set_loop (self->stream, TRUE);
-      gtk_media_stream_set_volume (self->stream, 1.0);
-      gtk_media_stream_play (self->stream);
+      g_autofree char *uri = g_filename_to_uri (RING_SOUND, NULL, NULL);
+      GstBus *bus;
+
+      gst_init (NULL, NULL);
+      self->player = gst_element_factory_make ("playbin", "tandem-ring");
+      if (self->player != NULL)
+        {
+          g_object_set (self->player, "uri", uri, "volume", 1.0, NULL);
+          bus = gst_element_get_bus (self->player);
+          self->bus_watch = gst_bus_add_watch (bus, bus_cb, self);
+          gst_object_unref (bus);
+          gst_element_set_state (self->player, GST_STATE_PLAYING);
+        }
     }
   tandem_notification_set_icon (notification, "audio-volume-high-symbolic");
   tandem_notification_set_urgency (notification, 2);

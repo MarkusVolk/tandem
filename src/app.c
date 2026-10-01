@@ -2,6 +2,7 @@
 #include "app.h"
 #include "dbus-api.h"
 #include "notify.h"
+#include "sni.h"
 #include "ui/window.h"
 #include "tandem-build.h"
 
@@ -11,6 +12,8 @@ struct _TandemApp
 
   TandemConfig *config;
   TandemManager *manager;
+  TandemSni *sni;
+  GDBusConnection *connection;
   GtkWindow *window;
   gboolean held;
 };
@@ -212,6 +215,12 @@ tandem_app_startup (GApplication *application)
   g_signal_connect (self->manager, "device-changed", G_CALLBACK (device_changed_cb), self);
   if (!tandem_manager_start (self->manager, &error))
     g_warning ("Cannot start the network: %s", error->message);
+
+  if (self->connection != NULL && g_settings_get_boolean (tandem_config_get_settings (self->config), "show-tray"))
+    {
+      self->sni = tandem_sni_new (self->connection, self->manager);
+      g_signal_connect_swapped (self->sni, "activate", G_CALLBACK (tandem_app_show_window), self);
+    }
 }
 
 static void
@@ -229,6 +238,7 @@ tandem_app_dbus_register (GApplication     *application,
   if (!G_APPLICATION_CLASS (tandem_app_parent_class)->dbus_register (application, connection,
                                                                       object_path, error))
     return FALSE;
+  TANDEM_APP (application)->connection = g_object_ref (connection);
   tandem_notify_init (connection);
   return tandem_dbus_api_register (connection, TANDEM_APP (application), error);
 }
@@ -252,8 +262,10 @@ tandem_app_shutdown (GApplication *application)
       g_signal_handlers_disconnect_by_data (self->manager, self);
       tandem_manager_stop (self->manager);
     }
+  g_clear_object (&self->sni);
   g_clear_object (&self->manager);
   g_clear_object (&self->config);
+  g_clear_object (&self->connection);
   G_APPLICATION_CLASS (tandem_app_parent_class)->shutdown (application);
 }
 
