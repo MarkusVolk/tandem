@@ -43,6 +43,15 @@
       <default>[]</default>
       <summary>Plugins switched off for every device</summary>
     </key>
+    <key name="auto-accept-pairing" type="s">
+      <choices>
+        <choice value="never"/>
+        <choice value="first"/>
+        <choice value="always"/>
+      </choices>
+      <default>"never"</default>
+      <summary>Accept pairing requests without asking: never, only while no device is paired, or always</summary>
+    </key>
     <key name="default-commands" type="s">
       <default>"{}"</default>
       <summary>Commands a newly paired device may run here, as a JSON object of id to name and command</summary>

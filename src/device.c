@@ -396,6 +396,20 @@ unpaired (TandemDevice *self)
   set_pair_state (self, TANDEM_PAIR_NONE);
 }
 
+static gboolean
+should_auto_accept (TandemDevice *self)
+{
+  g_autofree char *mode = g_settings_get_string (tandem_config_get_settings (self->config), "auto-accept-pairing");
+  g_auto(GStrv) trusted = NULL;
+
+  if (g_strcmp0 (mode, "always") == 0)
+    return TRUE;
+  if (g_strcmp0 (mode, "first") != 0)
+    return FALSE;
+  trusted = tandem_config_list_trusted (self->config);
+  return trusted == NULL || trusted[0] == NULL;
+}
+
 static void
 send_pair_packet (TandemDevice *self, gboolean pair, gboolean with_timestamp)
 {
@@ -472,6 +486,12 @@ handle_pair_packet (TandemDevice *self, TandemPacket *packet)
             }
           set_pair_state (self, TANDEM_PAIR_REQUESTED_BY_PEER);
           start_pair_timeout (self);
+          if (should_auto_accept (self))
+            {
+              g_message ("accepting the pairing request of %s automatically", self->name);
+              tandem_device_accept_pair (self);
+              break;
+            }
           g_signal_emit (self, signals[PAIR_REQUEST], 0);
           break;
         }
