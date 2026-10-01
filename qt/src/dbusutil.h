@@ -2,47 +2,39 @@
 #pragma once
 
 #include <QDBusArgument>
+#include <QDBusVariant>
+#include <QStringList>
 #include <QVariant>
 
 namespace Tandem
 {
 
-inline QVariant demarshal(const QVariant &value)
+QVariant demarshal(const QVariant &value);
+
+inline QVariant readArgument(const QDBusArgument &arg)
 {
-    if (value.userType() == qMetaTypeId<QDBusVariant>()) {
-        return demarshal(value.value<QDBusVariant>().variant());
-    }
-    if (value.userType() != qMetaTypeId<QDBusArgument>()) {
-        return value;
-    }
-    const QDBusArgument arg = value.value<QDBusArgument>();
     switch (arg.currentType()) {
-    case QDBusArgument::MapType: {
-        QVariantMap map;
-        arg.beginMap();
-        while (!arg.atEnd()) {
-            arg.beginMapEntry();
-            QVariant key;
-            QVariant val;
-            arg >> key >> val;
-            arg.endMapEntry();
-            map.insert(key.toString(), demarshal(val));
-        }
-        arg.endMap();
-        return map;
+    case QDBusArgument::VariantType: {
+        QDBusVariant v;
+        arg >> v;
+        return demarshal(v.variant());
     }
     case QDBusArgument::ArrayType: {
-        if (arg.currentSignature() == QLatin1String("ay")) {
+        const QString signature = arg.currentSignature();
+        if (signature == QLatin1String("ay")) {
             QByteArray bytes;
             arg >> bytes;
             return bytes;
         }
+        if (signature == QLatin1String("as")) {
+            QStringList strings;
+            arg >> strings;
+            return strings;
+        }
         QVariantList list;
         arg.beginArray();
         while (!arg.atEnd()) {
-            QVariant item;
-            arg >> item;
-            list.append(demarshal(item));
+            list.append(readArgument(arg));
         }
         arg.endArray();
         return list;
@@ -51,16 +43,46 @@ inline QVariant demarshal(const QVariant &value)
         QVariantList list;
         arg.beginStructure();
         while (!arg.atEnd()) {
-            QVariant item;
-            arg >> item;
-            list.append(demarshal(item));
+            list.append(readArgument(arg));
         }
         arg.endStructure();
         return list;
     }
-    default:
-        return arg.asVariant();
+    case QDBusArgument::MapType: {
+        QVariantMap map;
+        arg.beginMap();
+        while (!arg.atEnd()) {
+            arg.beginMapEntry();
+            const QString key = readArgument(arg).toString();
+            const QVariant val = readArgument(arg);
+            arg.endMapEntry();
+            map.insert(key, val);
+        }
+        arg.endMap();
+        return map;
     }
+    case QDBusArgument::BasicType:
+    default:
+        return demarshal(arg.asVariant());
+    }
+}
+
+inline QVariant demarshal(const QVariant &value)
+{
+    if (value.userType() == qMetaTypeId<QDBusVariant>()) {
+        return demarshal(value.value<QDBusVariant>().variant());
+    }
+    if (value.userType() == qMetaTypeId<QDBusArgument>()) {
+        return readArgument(value.value<QDBusArgument>());
+    }
+    if (value.typeId() == QMetaType::QVariantMap) {
+        QVariantMap map = value.toMap();
+        for (auto it = map.begin(); it != map.end(); ++it) {
+            it.value() = demarshal(it.value());
+        }
+        return map;
+    }
+    return value;
 }
 
 inline QVariantMap demarshalMap(const QVariant &value)
