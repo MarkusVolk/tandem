@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "../clipboard.h"
 #include "../device.h"
+#include "../kodi.h"
 #include "../notify.h"
 #include "../plugin.h"
 #include "../transfer.h"
@@ -19,6 +20,17 @@ struct _TandemSharePlugin
 G_DEFINE_FINAL_TYPE (TandemSharePlugin, tandem_share_plugin, TANDEM_TYPE_PLUGIN)
 
 static const char *const share_types[] = { "kdeconnect.share.request", "kdeconnect.share.request.update", NULL };
+
+static gboolean
+play_in_kodi (const char *file_or_url)
+{
+  g_autoptr(GSettings) settings = g_settings_new ("de.flk.Tandem");
+
+  if (!g_settings_get_boolean (settings, "play-received") || !tandem_kodi_is_connected (tandem_kodi_get ()))
+    return FALSE;
+  tandem_kodi_open (tandem_kodi_get (), file_or_url);
+  return TRUE;
+}
 
 static char *
 download_dir (void)
@@ -143,7 +155,9 @@ file_received_cb (GObject *source, GAsyncResult *result, gpointer user_data)
       tandem_notification_add_action (notification, "folder", "Show in folder");
       tandem_notification_set_callbacks (notification, received_action_cb, NULL, g_object_ref (rx->file), g_object_unref);
       tandem_notification_send (notification);
-      if (rx->open)
+      if (play_in_kodi (g_file_peek_path (rx->file)))
+        ;
+      else if (rx->open)
         {
           g_autofree char *uri = g_file_get_uri (rx->file);
 
@@ -193,6 +207,8 @@ receive_file (TandemSharePlugin *self, TandemPacket *packet)
 static void
 receive_text (TandemSharePlugin *self, const char *text)
 {
+  if (g_uri_is_valid (text, G_URI_FLAGS_NONE, NULL) && play_in_kodi (text))
+    return;
   TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (self));
   g_autofree char *summary = g_strdup_printf ("Text from %s", tandem_device_get_name (device));
   g_autoptr(TandemNotification) notification = tandem_notification_new (summary, text);
@@ -207,6 +223,8 @@ receive_url (TandemSharePlugin *self, const char *url)
 {
   g_autoptr(GError) error = NULL;
 
+  if (play_in_kodi (url))
+    return;
   if (!g_app_info_launch_default_for_uri (url, NULL, &error))
     {
       TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (self));

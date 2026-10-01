@@ -49,6 +49,7 @@ GType tandem_sms_plugin_get_type (void);
 GType tandem_clipboard_plugin_get_type (void);
 GType tandem_sendnotifications_plugin_get_type (void);
 GType tandem_remoteinput_plugin_get_type (void);
+GType tandem_kodicontrol_plugin_get_type (void);
 
 static const TandemPluginInfo registry[] = {
   { "ping", tandem_ping_plugin_get_type },
@@ -72,6 +73,7 @@ static const TandemPluginInfo registry[] = {
   { "clipboard", tandem_clipboard_plugin_get_type },
   { "sendnotifications", tandem_sendnotifications_plugin_get_type },
   { "remoteinput", tandem_remoteinput_plugin_get_type },
+  { "kodicontrol", tandem_kodicontrol_plugin_get_type },
 };
 
 static void
@@ -211,10 +213,24 @@ tandem_plugin_registry_capabilities (GStrv *incoming, GStrv *outgoing)
   g_autoptr(GStrvBuilder) out_builder = g_strv_builder_new ();
   g_autoptr(GHashTable) in_seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   g_autoptr(GHashTable) out_seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  g_auto(GStrv) disabled = NULL;
+  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+  g_autoptr(GSettingsSchema) schema = source != NULL ? g_settings_schema_source_lookup (source, "de.flk.Tandem", TRUE) : NULL;
+
+  if (schema != NULL)
+    {
+      g_autoptr(GSettings) settings = g_settings_new ("de.flk.Tandem");
+
+      disabled = g_settings_get_strv (settings, "disabled-plugins");
+    }
 
   for (guint i = 0; i < G_N_ELEMENTS (registry); i++)
     {
-      TandemPluginClass *klass = g_type_class_ref (registry[i].get_type ());
+      TandemPluginClass *klass;
+
+      if (disabled != NULL && g_strv_contains ((const char *const *) disabled, registry[i].name))
+        continue;
+      klass = g_type_class_ref (registry[i].get_type ());
 
       add_unique (in_builder, in_seen, klass->incoming);
       add_unique (out_builder, out_seen, klass->outgoing);

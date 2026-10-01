@@ -40,7 +40,7 @@
       <summary>Restore token of the RemoteDesktop portal session</summary>
     </key>
     <key name="disabled-plugins" type="as">
-      <default>[]</default>
+      <default>['kodicontrol']</default>
       <summary>Plugins switched off for every device</summary>
     </key>
     <key name="auto-accept-pairing" type="s">
@@ -51,6 +51,10 @@
       </choices>
       <default>"never"</default>
       <summary>Accept pairing requests without asking: never, only while no device is paired, or always</summary>
+    </key>
+    <key name="play-received" type="b">
+      <default>false</default>
+      <summary>Play received links and media files in Kodi instead of keeping them</summary>
     </key>
     <key name="default-commands" type="s">
       <default>"{}"</default>

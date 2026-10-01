@@ -43,6 +43,8 @@ daemon_sources = files(
   'plugins/clipboard.c',
   'plugins/sendnotifications.c',
   'plugins/remoteinput.c',
+  'plugins/kodicontrol.c',
+  'kodi.c',
 )
 
 daemon_deps = [glib_dep, gio_dep, gio_unix_dep, json_dep, gnutls_dep, xkb_dep, m_dep]
