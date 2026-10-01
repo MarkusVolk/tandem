@@ -3,6 +3,7 @@
 #include "app.h"
 #include "config.h"
 #include "device.h"
+#include "plugin.h"
 #include "util.h"
 
 #include "clipboard.h"
@@ -22,6 +23,10 @@ static const char manager_xml[] =
   "    </method>"
   "    <method name='Show'/>"
   "    <method name='Quit'/>"
+  "    <method name='GetSettings'><arg type='a{sv}' name='settings' direction='out'/></method>"
+  "    <method name='SetSetting'><arg type='s' name='key' direction='in'/><arg type='v' name='value' direction='in'/></method>"
+  "    <method name='ListPlugins'><arg type='as' name='plugins' direction='out'/></method>"
+  "    <signal name='SettingsChanged'/>"
   "    <signal name='DeviceAdded'><arg type='s' name='id'/></signal>"
   "    <signal name='DeviceRemoved'><arg type='s' name='id'/></signal>"
   "    <signal name='DeviceChanged'><arg type='s' name='id'/></signal>"
@@ -77,6 +82,9 @@ static const char device_xml[] =
   "      <arg type='a{sv}' name='result' direction='out'/>"
   "    </method>"
   "    <signal name='PluginChanged'><arg type='s' name='plugin'/></signal>"
+  "    <method name='GetSettings'><arg type='a{sv}' name='settings' direction='out'/></method>"
+  "    <method name='SetSetting'><arg type='s' name='key' direction='in'/><arg type='v' name='value' direction='in'/></method>"
+  "    <signal name='SettingsChanged'/>"
   "  </interface>"
   "</node>";
 
@@ -85,6 +93,51 @@ static GDBusNodeInfo *device_info;
 static guint manager_registration;
 static GDBusConnection *api_connection;
 static GHashTable *device_registrations;
+
+static GVariant *
+settings_to_variant (GSettings *settings)
+{
+  g_autoptr(GSettingsSchema) schema = NULL;
+  g_auto(GStrv) keys = NULL;
+  GVariantBuilder builder;
+
+  g_object_get (settings, "settings-schema", &schema, NULL);
+  keys = g_settings_schema_list_keys (schema);
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+  for (char **k = keys; *k != NULL; k++)
+    {
+      g_autoptr(GVariant) value = g_settings_get_value (settings, *k);
+
+      g_variant_builder_add (&builder, "{sv}", *k, value);
+    }
+  return g_variant_builder_end (&builder);
+}
+
+static gboolean
+set_setting (GSettings *settings, GVariant *parameters, GDBusMethodInvocation *invocation)
+{
+  const char *key;
+  g_autoptr(GVariant) value = NULL;
+  g_autoptr(GSettingsSchema) schema = NULL;
+  g_autoptr(GSettingsSchemaKey) schema_key = NULL;
+
+  g_variant_get (parameters, "(&sv)", &key, &value);
+  g_object_get (settings, "settings-schema", &schema, NULL);
+  if (!g_settings_schema_has_key (schema, key))
+    {
+      g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "Unknown setting %s", key);
+      return FALSE;
+    }
+  schema_key = g_settings_schema_get_key (schema, key);
+  if (!g_variant_is_of_type (value, g_settings_schema_key_get_value_type (schema_key)) ||
+      !g_settings_schema_key_range_check (schema_key, value))
+    {
+      g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS, "Bad value for %s", key);
+      return FALSE;
+    }
+  g_settings_set_value (settings, key, value);
+  return TRUE;
+}
 
 static void
 manager_method_call (GDBusConnection       *connection,
@@ -127,6 +180,30 @@ manager_method_call (GDBusConnection       *connection,
     {
       g_dbus_method_invocation_return_value (invocation, NULL);
       tandem_app_quit (app);
+    }
+  else if (g_str_equal (method_name, "GetSettings"))
+    {
+      g_dbus_method_invocation_return_value (invocation, g_variant_new_tuple ((GVariant *[]) {
+                                               settings_to_variant (tandem_config_get_settings (tandem_app_get_config (app))) }, 1));
+    }
+  else if (g_str_equal (method_name, "SetSetting"))
+    {
+      if (set_setting (tandem_config_get_settings (tandem_app_get_config (app)), parameters, invocation))
+        {
+          g_dbus_method_invocation_return_value (invocation, NULL);
+          g_dbus_connection_emit_signal (connection, NULL, TANDEM_DBUS_PATH, TANDEM_DBUS_MANAGER_IFACE, "SettingsChanged", NULL, NULL);
+        }
+    }
+  else if (g_str_equal (method_name, "ListPlugins"))
+    {
+      guint n;
+      const TandemPluginInfo *registry = tandem_plugin_registry (&n);
+      GVariantBuilder builder;
+
+      g_variant_builder_init (&builder, G_VARIANT_TYPE ("as"));
+      for (guint i = 0; i < n; i++)
+        g_variant_builder_add (&builder, "s", registry[i].name);
+      g_dbus_method_invocation_return_value (invocation, g_variant_new ("(as)", &builder));
     }
   else
     {
@@ -411,6 +488,21 @@ device_method_call (GDBusConnection       *connection,
           return;
         }
       g_dbus_method_invocation_return_value (invocation, g_variant_new_tuple (&result, 1));
+      return;
+    }
+  else if (g_str_equal (method_name, "GetSettings"))
+    {
+      g_dbus_method_invocation_return_value (invocation, g_variant_new_tuple ((GVariant *[]) {
+                                               settings_to_variant (tandem_device_get_settings (device)) }, 1));
+      return;
+    }
+  else if (g_str_equal (method_name, "SetSetting"))
+    {
+      if (set_setting (tandem_device_get_settings (device), parameters, invocation))
+        {
+          g_dbus_method_invocation_return_value (invocation, NULL);
+          g_dbus_connection_emit_signal (connection, NULL, object_path, TANDEM_DBUS_DEVICE_IFACE, "SettingsChanged", NULL, NULL);
+        }
       return;
     }
   else if (g_str_equal (method_name, "ListPlayers"))
