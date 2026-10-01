@@ -50,6 +50,10 @@
   </schema>
 
   <schema id="de.flk.Tandem.Device">
+    <key name="show-notifications" type="b">
+      <default>false</default>
+      <summary>Show the device's notifications as desktop notifications</summary>
+    </key>
     <key name="clipboard-auto" type="b">
       <default>true</default>
       <summary>Share clipboard changes with this device automatically</summary>

@@ -262,6 +262,8 @@ notifications_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
   n->actions = strv_from_json_array (tandem_packet_get_array (packet, "actions"));
   n->clearable = tandem_packet_get_boolean (packet, "isClearable", FALSE);
   n->silent = tandem_packet_get_boolean (packet, "silent", FALSE);
+  g_debug ("notification %s from %s: silent %d, shown before %u, time %" G_GINT64_FORMAT, n->id, n->app_name,
+           n->silent, n->desktop_id, tandem_packet_get_int (packet, "time", 0));
   if (*n->title == '\0')
     {
       g_free (n->title);
@@ -270,6 +272,8 @@ notifications_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
   tandem_plugin_changed (plugin);
 
   if (n->silent && n->desktop_id == 0)
+    return;
+  if (!g_settings_get_boolean (tandem_plugin_get_settings (plugin), "show-notifications") && n->desktop_id == 0)
     return;
 
   hash = tandem_packet_get_string (packet, "payloadHash", NULL);

@@ -186,6 +186,11 @@ Kirigami.ScrollablePage {
                 }
                 FormCard.FormCard {
                     visible: page.device.hasPlugin("notifications")
+                    FormCard.FormSwitchDelegate {
+                        text: "Show as desktop notifications"
+                        checked: page.deviceSettings["show-notifications"] === true
+                        onToggled: page.device.setSetting("show-notifications", checked)
+                    }
                     FormCard.FormButtonDelegate {
                         text: page.notificationsExpanded ? "Hide" : "Show"
                         icon.name: page.notificationsExpanded ? "go-up" : "go-down"

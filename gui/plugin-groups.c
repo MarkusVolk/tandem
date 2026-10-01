@@ -366,6 +366,8 @@ runcommand_group (TandemGuiDevice *device)
   return group_new (device, "runcommand", "Commands the device may run here", runcommand_refresh);
 }
 
+static GtkWidget *switch_row (GSettings *settings, const char *key, const char *title);
+
 /* notifications */
 
 static void
@@ -461,7 +463,12 @@ notifications_refresh (GtkWidget *group, TandemGuiDevice *device, GVariant *stat
 static GtkWidget *
 notifications_group (TandemGuiDevice *device)
 {
-  return group_new (device, "notifications", "Notifications", notifications_refresh);
+  GtkWidget *group = group_new (device, "notifications", "Notifications", notifications_refresh);
+
+  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group),
+                             switch_row (tandem_gui_device_get_settings (device), "show-notifications",
+                                         "Show as desktop notifications"));
+  return group;
 }
 
 /* share */
