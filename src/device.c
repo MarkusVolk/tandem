@@ -662,6 +662,7 @@ link_packet_cb (TandemLink *link, TandemPacket *packet, gpointer user_data)
         }
       return;
     }
+  g_debug ("device %s: received %s", self->id, packet->type);
   for (guint i = 0; i < self->plugins->len; i++)
     {
       TandemPlugin *plugin = g_ptr_array_index (self->plugins, i);

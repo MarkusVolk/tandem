@@ -40,6 +40,9 @@ GType tandem_systemvolume_plugin_get_type (void);
 GType tandem_mprisremote_plugin_get_type (void);
 GType tandem_mousepad_plugin_get_type (void);
 GType tandem_presenter_plugin_get_type (void);
+GType tandem_telephony_plugin_get_type (void);
+GType tandem_contacts_plugin_get_type (void);
+GType tandem_sms_plugin_get_type (void);
 
 static const TandemPluginInfo registry[] = {
   { "ping", tandem_ping_plugin_get_type },
@@ -55,6 +58,9 @@ static const TandemPluginInfo registry[] = {
   { "mprisremote", tandem_mprisremote_plugin_get_type },
   { "mousepad", tandem_mousepad_plugin_get_type },
   { "presenter", tandem_presenter_plugin_get_type },
+  { "contacts", tandem_contacts_plugin_get_type },
+  { "telephony", tandem_telephony_plugin_get_type },
+  { "sms", tandem_sms_plugin_get_type },
 };
 
 static void

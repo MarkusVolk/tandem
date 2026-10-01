@@ -50,6 +50,14 @@
   </schema>
 
   <schema id="de.flk.Tandem.Device">
+    <key name="pause-media-on-call" type="b">
+      <default>true</default>
+      <summary>Pause local media players while this device is on a call</summary>
+    </key>
+    <key name="mute-on-call" type="b">
+      <default>false</default>
+      <summary>Mute the default sink while this device is on a call</summary>
+    </key>
     <key name="disabled-plugins" type="as">
       <default>[]</default>
       <summary>Plugins switched off for this device</summary>
