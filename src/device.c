@@ -464,6 +464,8 @@ handle_pair_packet (TandemDevice *self, TandemPacket *packet)
               if (llabs (self->pair_timestamp - now) > PAIR_CLOCK_TOLERANCE_SECONDS)
                 {
                   set_pair_state (self, TANDEM_PAIR_NONE);
+                  g_warning ("pairing with %s refused: clocks differ by %" G_GINT64_FORMAT " s, check the time on both devices",
+                             self->name, self->pair_timestamp - now);
                   g_signal_emit (self, signals[PAIR_FAILED], 0, "Device clocks are out of sync");
                   return;
                 }
