@@ -422,11 +422,13 @@ notifications_refresh (GtkWidget *group, TandemGuiDevice *device, GVariant *stat
           g_variant_lookup (item, "title", "&s", &title);
           g_variant_lookup (item, "text", "&s", &text);
           g_variant_lookup (item, "replyable", "b", &replyable);
-          subtitle = g_strdup_printf ("%s: %s", app, text);
-          adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
+          subtitle = g_strdup (app);
+          adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), *title != '\0' ? title : text);
           adw_preferences_row_set_use_markup (ADW_PREFERENCES_ROW (row), FALSE);
           adw_action_row_set_subtitle (ADW_ACTION_ROW (row), subtitle);
           adw_action_row_set_subtitle_lines (ADW_ACTION_ROW (row), 1);
+          adw_action_row_set_title_lines (ADW_ACTION_ROW (row), 1);
+          gtk_widget_set_tooltip_text (row, text);
           if (replyable)
             {
               GtkWidget *reply = gtk_button_new_from_icon_name ("mail-reply-sender-symbolic");
