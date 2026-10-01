@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "sni.h"
+#include "dbusmenu.h"
 #include "tandem-build.h"
 
 #define SNI_PATH "/StatusNotifierItem"
@@ -44,10 +45,12 @@ struct _TandemSni
   guint watcher_watch;
   char *status;
   char *tooltip;
+  TandemDbusMenu *menu;
 };
 
 enum {
   ACTIVATE,
+  QUIT,
   N_SIGNALS
 };
 
@@ -119,7 +122,7 @@ sni_get_property (GDBusConnection  *connection,
   if (g_str_equal (property_name, "ItemIsMenu"))
     return g_variant_new_boolean (FALSE);
   if (g_str_equal (property_name, "Menu"))
-    return g_variant_new_object_path ("/NO_DBUSMENU");
+    return g_variant_new_object_path (TANDEM_MENU_PATH);
   g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "Unknown property %s", property_name);
   return NULL;
 }
@@ -136,8 +139,7 @@ sni_method_call (GDBusConnection       *connection,
 {
   TandemSni *self = user_data;
 
-  if (g_str_equal (method_name, "Activate") || g_str_equal (method_name, "SecondaryActivate") ||
-      g_str_equal (method_name, "ContextMenu"))
+  if (g_str_equal (method_name, "Activate") || g_str_equal (method_name, "SecondaryActivate"))
     g_signal_emit (self, signals[ACTIVATE], 0);
   g_dbus_method_invocation_return_value (invocation, NULL);
 }
@@ -211,6 +213,7 @@ tandem_sni_dispose (GObject *object)
   self->registration = 0;
   if (self->manager != NULL)
     g_signal_handlers_disconnect_by_data (self->manager, self);
+  g_clear_object (&self->menu);
   g_clear_object (&self->manager);
   g_clear_object (&self->connection);
 
@@ -237,11 +240,24 @@ tandem_sni_class_init (TandemSniClass *klass)
 
   signals[ACTIVATE] = g_signal_new ("activate", TANDEM_TYPE_SNI, G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                                     G_TYPE_NONE, 0);
+  signals[QUIT] = g_signal_new ("quit", TANDEM_TYPE_SNI, G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
 }
 
 static void
 tandem_sni_init (TandemSni *self)
 {
+}
+
+static void
+menu_show_cb (TandemSni *self)
+{
+  g_signal_emit (self, signals[ACTIVATE], 0);
+}
+
+static void
+menu_quit_cb (TandemSni *self)
+{
+  g_signal_emit (self, signals[QUIT], 0);
 }
 
 TandemSni *
@@ -252,6 +268,9 @@ tandem_sni_new (GDBusConnection *connection, TandemManager *manager)
 
   self->connection = g_object_ref (connection);
   self->manager = g_object_ref (manager);
+  self->menu = tandem_dbus_menu_new (connection, manager);
+  g_signal_connect_swapped (self->menu, "show", G_CALLBACK (menu_show_cb), self);
+  g_signal_connect_swapped (self->menu, "quit", G_CALLBACK (menu_quit_cb), self);
   compute_state (self, &self->status, &self->tooltip);
 
   if (sni_info == NULL)

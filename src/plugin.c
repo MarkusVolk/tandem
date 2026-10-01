@@ -43,6 +43,9 @@ GType tandem_presenter_plugin_get_type (void);
 GType tandem_telephony_plugin_get_type (void);
 GType tandem_contacts_plugin_get_type (void);
 GType tandem_sms_plugin_get_type (void);
+GType tandem_clipboard_plugin_get_type (void);
+GType tandem_sendnotifications_plugin_get_type (void);
+GType tandem_remoteinput_plugin_get_type (void);
 
 static const TandemPluginInfo registry[] = {
   { "ping", tandem_ping_plugin_get_type },
@@ -61,6 +64,9 @@ static const TandemPluginInfo registry[] = {
   { "contacts", tandem_contacts_plugin_get_type },
   { "telephony", tandem_telephony_plugin_get_type },
   { "sms", tandem_sms_plugin_get_type },
+  { "clipboard", tandem_clipboard_plugin_get_type },
+  { "sendnotifications", tandem_sendnotifications_plugin_get_type },
+  { "remoteinput", tandem_remoteinput_plugin_get_type },
 };
 
 static void

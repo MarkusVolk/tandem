@@ -50,6 +50,14 @@
   </schema>
 
   <schema id="de.flk.Tandem.Device">
+    <key name="clipboard-auto" type="b">
+      <default>true</default>
+      <summary>Share clipboard changes with this device automatically</summary>
+    </key>
+    <key name="send-notifications" type="b">
+      <default>true</default>
+      <summary>Forward desktop notifications to this device</summary>
+    </key>
     <key name="pause-media-on-call" type="b">
       <default>true</default>
       <summary>Pause local media players while this device is on a call</summary>

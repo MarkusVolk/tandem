@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "device-page.h"
 
-void tandem_ping_plugin_send (TandemPlugin *plugin, const char *message);
+#include "../plugins/plugins.h"
 
 struct _TandemDevicePage
 {

@@ -6,6 +6,7 @@
 
 #include <gio/gio.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void
@@ -27,6 +28,21 @@ usage (void)
            "  unpair <dev>      forget a paired device\n"
            "  ping <dev> [msg]  send a ping\n"
            "  key <dev>         show the verification key during pairing\n"
+           "  ring <dev>        make the device ring\n"
+           "  share <dev> <file>... | <url>   send files or a URL\n"
+           "  text <dev> <text> send a text snippet\n"
+           "  clipboard <dev>   send the clipboard\n"
+           "  lock|unlock <dev> lock or unlock the device\n"
+           "  commands <dev>    list the commands the device may run here\n"
+           "  add-command <dev> <name> <shell>  add such a command\n"
+           "  remove-command <dev> <key>\n"
+           "  run <dev> <key>   run one of the device's commands here\n"
+           "  sms <dev> <number> <text>  send an SMS\n"
+           "  keys <dev> <text> type on the device\n"
+           "  special-key <dev> <n>  send a special key (1 Backspace, 12 Enter)\n"
+           "  notifications <dev>   list the device's notifications\n"
+           "  dismiss <dev> <id>    dismiss one of them\n"
+           "  players <dev>     list local media players\n"
            "  show              open the window\n"
            "  quit              stop the service\n"
            "  --smoke-test      check the build and the host without a phone\n");
@@ -269,6 +285,51 @@ cmd_device (const char *wanted, const char *method, GVariant *parameters, const 
   return 0;
 }
 
+static int
+cmd_device_print (const char *wanted, const char *method, GVariant *parameters)
+{
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GDBusConnection) bus = session_bus (&error);
+  g_autofree char *id = NULL;
+  g_autofree char *path = NULL;
+  g_autoptr(GVariant) reply = NULL;
+  g_autoptr(GVariant) child = NULL;
+  GVariantIter iter;
+  GVariant *row;
+
+  if (bus == NULL)
+    return fail (error);
+  id = resolve_device (bus, wanted, &error);
+  if (id == NULL)
+    return fail (error);
+  path = tandem_object_path_for_id (id);
+  reply = g_dbus_connection_call_sync (bus, TANDEM_DBUS_NAME, path, TANDEM_DBUS_DEVICE_IFACE, method, parameters,
+                                       NULL, G_DBUS_CALL_FLAGS_NONE, 30000, NULL, &error);
+  if (reply == NULL)
+    return fail (error);
+  child = g_variant_get_child_value (reply, 0);
+  g_variant_iter_init (&iter, child);
+  while ((row = g_variant_iter_next_value (&iter)) != NULL)
+    {
+      if (g_variant_is_of_type (row, G_VARIANT_TYPE_STRING))
+        printf ("%s\n", g_variant_get_string (row, NULL));
+      else
+        {
+          gsize n = g_variant_n_children (row);
+
+          for (gsize i = 0; i < n; i++)
+            {
+              g_autoptr(GVariant) field = g_variant_get_child_value (row, i);
+
+              printf ("%s%s", i > 0 ? "\t" : "", g_variant_get_string (field, NULL));
+            }
+          printf ("\n");
+        }
+      g_variant_unref (row);
+    }
+  return 0;
+}
+
 int
 tandem_cli_run (int argc, char **argv)
 {
@@ -296,6 +357,61 @@ tandem_cli_run (int argc, char **argv)
     return cmd_device (argv[2], "Unpair", NULL, NULL);
   if (argc > 2 && g_str_equal (command, "ping"))
     return cmd_device (argv[2], "Ping", g_variant_new ("(s)", argc > 3 ? argv[3] : ""), NULL);
+  if (argc > 2 && g_str_equal (command, "ring"))
+    return cmd_device (argv[2], "Ring", NULL, NULL);
+  if (argc > 3 && g_str_equal (command, "share"))
+    {
+      g_autoptr(GPtrArray) paths = g_ptr_array_new ();
+
+      if (argc == 4 && g_uri_is_valid (argv[3], G_URI_FLAGS_NONE, NULL) && !g_file_test (argv[3], G_FILE_TEST_EXISTS))
+        return cmd_device (argv[2], "ShareUrl", g_variant_new ("(s)", argv[3]), NULL);
+      for (int i = 3; i < argc; i++)
+        {
+          g_autoptr(GFile) file = g_file_new_for_commandline_arg (argv[i]);
+
+          g_ptr_array_add (paths, g_file_get_path (file));
+        }
+      g_ptr_array_add (paths, NULL);
+      {
+        int ret = cmd_device (argv[2], "ShareFiles", g_variant_new ("(^as)", (char **) paths->pdata), NULL);
+
+        for (guint i = 0; i + 1 < paths->len; i++)
+          g_free (g_ptr_array_index (paths, i));
+        return ret;
+      }
+    }
+  if (argc > 3 && g_str_equal (command, "text"))
+    return cmd_device (argv[2], "ShareText", g_variant_new ("(s)", argv[3]), NULL);
+  if (argc > 2 && g_str_equal (command, "clipboard"))
+    return cmd_device (argv[2], "SendClipboard", NULL, NULL);
+  if (argc > 2 && g_str_equal (command, "lock"))
+    return cmd_device (argv[2], "Lock", g_variant_new ("(b)", TRUE), NULL);
+  if (argc > 2 && g_str_equal (command, "unlock"))
+    return cmd_device (argv[2], "Lock", g_variant_new ("(b)", FALSE), NULL);
+  if (argc > 2 && g_str_equal (command, "commands"))
+    return cmd_device_print (argv[2], "ListCommands", NULL);
+  if (argc > 4 && g_str_equal (command, "add-command"))
+    return cmd_device (argv[2], "AddCommand", g_variant_new ("(ss)", argv[3], argv[4]), NULL);
+  if (argc > 3 && g_str_equal (command, "remove-command"))
+    return cmd_device (argv[2], "RemoveCommand", g_variant_new ("(s)", argv[3]), NULL);
+  if (argc > 3 && g_str_equal (command, "run"))
+    return cmd_device (argv[2], "RunCommand", g_variant_new ("(s)", argv[3]), NULL);
+  if (argc > 4 && g_str_equal (command, "sms"))
+    {
+      const char *addresses[] = { argv[3], NULL };
+
+      return cmd_device (argv[2], "SendSms", g_variant_new ("(^ass)", addresses, argv[4]), NULL);
+    }
+  if (argc > 3 && g_str_equal (command, "keys"))
+    return cmd_device (argv[2], "SendKeys", g_variant_new ("(s)", argv[3]), NULL);
+  if (argc > 3 && g_str_equal (command, "special-key"))
+    return cmd_device (argv[2], "SendSpecialKey", g_variant_new ("(i)", atoi (argv[3])), NULL);
+  if (argc > 2 && g_str_equal (command, "notifications"))
+    return cmd_device_print (argv[2], "ListNotifications", NULL);
+  if (argc > 3 && g_str_equal (command, "dismiss"))
+    return cmd_device (argv[2], "DismissNotification", g_variant_new ("(s)", argv[3]), NULL);
+  if (argc > 2 && g_str_equal (command, "players"))
+    return cmd_device_print (argv[2], "ListPlayers", NULL);
   if (argc > 2 && g_str_equal (command, "key"))
     return cmd_device (argv[2], NULL, NULL, "VerificationKey");
   if (g_str_equal (command, "help"))

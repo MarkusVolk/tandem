@@ -35,7 +35,7 @@ pause_media (TandemTelephonyPlugin *self)
   GSettings *settings = tandem_plugin_get_settings (TANDEM_PLUGIN (self));
   TandemMprisWatch *watch = tandem_mpris_watch_get ();
   TandemPulse *pulse = tandem_pulse_get ();
-  g_autolist(GList) players = NULL;
+  g_autoptr(GList) players = NULL;
 
   if (self->in_call)
     return;
@@ -45,13 +45,14 @@ pause_media (TandemTelephonyPlugin *self)
       players = tandem_mpris_watch_list (watch);
       for (GList *l = players; l != NULL; l = l->next)
         {
-          TandemMprisPlayer *player = l->data;
+          TandemMprisPlayer *player = tandem_mpris_watch_lookup (watch, l->data);
 
-          if (g_str_equal (tandem_mpris_player_get_string (player, "PlaybackStatus", ""), "Playing") &&
+          if (player != NULL &&
+              g_str_equal (tandem_mpris_player_get_string (player, "PlaybackStatus", ""), "Playing") &&
               tandem_mpris_player_get_boolean (player, "CanPause", TRUE))
             {
               tandem_mpris_player_call (player, "Pause", NULL);
-              g_ptr_array_add (self->paused_players, g_strdup (player->key));
+              g_ptr_array_add (self->paused_players, g_strdup (l->data));
             }
         }
     }

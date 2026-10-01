@@ -220,6 +220,7 @@ tandem_app_startup (GApplication *application)
     {
       self->sni = tandem_sni_new (self->connection, self->manager);
       g_signal_connect_swapped (self->sni, "activate", G_CALLBACK (tandem_app_show_window), self);
+      g_signal_connect_swapped (self->sni, "quit", G_CALLBACK (tandem_app_quit), self);
     }
 }
 

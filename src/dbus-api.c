@@ -5,7 +5,10 @@
 #include "device.h"
 #include "util.h"
 
-void tandem_ping_plugin_send (TandemPlugin *plugin, const char *message);
+#include "clipboard.h"
+#include "mpris-watch.h"
+#include "plugins/plugins.h"
+#include "plugins/sms.h"
 
 static const char manager_xml[] =
   "<node>"
@@ -47,6 +50,22 @@ static const char device_xml[] =
   "      <arg type='s' name='plugin' direction='in'/>"
   "      <arg type='b' name='enabled' direction='in'/>"
   "    </method>"
+  "    <method name='Ring'/>"
+  "    <method name='ShareFiles'><arg type='as' name='paths' direction='in'/></method>"
+  "    <method name='ShareText'><arg type='s' name='text' direction='in'/></method>"
+  "    <method name='ShareUrl'><arg type='s' name='url' direction='in'/></method>"
+  "    <method name='SendClipboard'/>"
+  "    <method name='Lock'><arg type='b' name='locked' direction='in'/></method>"
+  "    <method name='ListCommands'><arg type='a(sss)' name='commands' direction='out'/></method>"
+  "    <method name='AddCommand'><arg type='s' name='name' direction='in'/><arg type='s' name='command' direction='in'/></method>"
+  "    <method name='RemoveCommand'><arg type='s' name='key' direction='in'/></method>"
+  "    <method name='RunCommand'><arg type='s' name='key' direction='in'/></method>"
+  "    <method name='SendSms'><arg type='as' name='addresses' direction='in'/><arg type='s' name='body' direction='in'/></method>"
+  "    <method name='SendKeys'><arg type='s' name='text' direction='in'/></method>"
+  "    <method name='SendSpecialKey'><arg type='i' name='key' direction='in'/></method>"
+  "    <method name='ListNotifications'><arg type='a(ssss)' name='notifications' direction='out'/></method>"
+  "    <method name='DismissNotification'><arg type='s' name='id' direction='in'/></method>"
+  "    <method name='ListPlayers'><arg type='as' name='players' direction='out'/></method>"
   "  </interface>"
   "</node>";
 
@@ -156,6 +175,17 @@ device_get_property (GDBusConnection  *connection,
   return NULL;
 }
 
+static TandemPlugin *
+require_plugin (TandemDevice *device, const char *name, GDBusMethodInvocation *invocation)
+{
+  TandemPlugin *plugin = tandem_device_get_plugin (device, name);
+
+  if (plugin == NULL)
+    g_dbus_method_invocation_return_error (invocation, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                                           "Device is not paired and reachable with the %s plugin", name);
+  return plugin;
+}
+
 static void
 device_method_call (GDBusConnection       *connection,
                     const char            *sender,
@@ -197,6 +227,155 @@ device_method_call (GDBusConnection       *connection,
 
       g_variant_get (parameters, "(&sb)", &name, &enabled);
       tandem_device_set_plugin_enabled (device, name, enabled);
+    }
+  else if (g_str_equal (method_name, "Ring"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "findmyphone", invocation);
+
+      if (plugin == NULL)
+        return;
+      tandem_findmyphone_plugin_ring (plugin);
+    }
+  else if (g_str_equal (method_name, "ShareFiles"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "share", invocation);
+      g_autofree const char **paths = NULL;
+      g_autoptr(GListStore) files = g_list_store_new (G_TYPE_FILE);
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(^a&s)", &paths);
+      for (const char **p = paths; p != NULL && *p != NULL; p++)
+        {
+          g_autoptr(GFile) file = g_file_new_for_commandline_arg (*p);
+
+          g_list_store_append (files, file);
+        }
+      tandem_share_plugin_send_files (plugin, G_LIST_MODEL (files));
+    }
+  else if (g_str_equal (method_name, "ShareText") || g_str_equal (method_name, "ShareUrl"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "share", invocation);
+      const char *text;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(&s)", &text);
+      if (g_str_equal (method_name, "ShareUrl"))
+        tandem_share_plugin_send_url (plugin, text);
+      else
+        tandem_share_plugin_send_text (plugin, text);
+    }
+  else if (g_str_equal (method_name, "SendClipboard"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "clipboard", invocation);
+
+      if (plugin == NULL)
+        return;
+      tandem_clipboard_plugin_send (plugin, tandem_clipboard_get_text (tandem_clipboard_get ()));
+    }
+  else if (g_str_equal (method_name, "Lock"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "lock", invocation);
+      gboolean locked;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(b)", &locked);
+      tandem_lock_plugin_set_remote (plugin, locked);
+    }
+  else if (g_str_equal (method_name, "ListCommands"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "runcommand", invocation);
+
+      if (plugin == NULL)
+        return;
+      g_dbus_method_invocation_return_value (invocation, g_variant_new_tuple ((GVariant *[]) { tandem_runcommand_plugin_list (plugin) }, 1));
+      return;
+    }
+  else if (g_str_equal (method_name, "AddCommand"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "runcommand", invocation);
+      const char *name, *command;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(&s&s)", &name, &command);
+      tandem_runcommand_plugin_add (plugin, name, command);
+    }
+  else if (g_str_equal (method_name, "RemoveCommand") || g_str_equal (method_name, "RunCommand"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "runcommand", invocation);
+      const char *key;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(&s)", &key);
+      if (g_str_equal (method_name, "RunCommand"))
+        tandem_runcommand_plugin_run (plugin, key);
+      else
+        tandem_runcommand_plugin_remove (plugin, key);
+    }
+  else if (g_str_equal (method_name, "SendSms"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "sms", invocation);
+      g_autofree const char **addresses = NULL;
+      const char *body;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(^a&s&s)", &addresses, &body);
+      tandem_sms_plugin_send (TANDEM_SMS_PLUGIN (plugin), addresses, body, -1);
+    }
+  else if (g_str_equal (method_name, "SendKeys"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "remoteinput", invocation);
+      const char *text;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(&s)", &text);
+      tandem_remoteinput_plugin_send_text (plugin, text);
+    }
+  else if (g_str_equal (method_name, "SendSpecialKey"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "remoteinput", invocation);
+      gint32 key;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(i)", &key);
+      tandem_remoteinput_plugin_send_special (plugin, key);
+    }
+  else if (g_str_equal (method_name, "ListNotifications"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "notifications", invocation);
+
+      if (plugin == NULL)
+        return;
+      g_dbus_method_invocation_return_value (invocation, g_variant_new_tuple ((GVariant *[]) { tandem_notifications_plugin_describe (plugin) }, 1));
+      return;
+    }
+  else if (g_str_equal (method_name, "DismissNotification"))
+    {
+      TandemPlugin *plugin = require_plugin (device, "notifications", invocation);
+      const char *id;
+
+      if (plugin == NULL)
+        return;
+      g_variant_get (parameters, "(&s)", &id);
+      tandem_notifications_plugin_dismiss (plugin, id);
+    }
+  else if (g_str_equal (method_name, "ListPlayers"))
+    {
+      g_autoptr(GList) players = tandem_mpris_watch_list (tandem_mpris_watch_get ());
+      GVariantBuilder builder;
+
+      g_variant_builder_init (&builder, G_VARIANT_TYPE ("as"));
+      for (GList *l = players; l != NULL; l = l->next)
+        g_variant_builder_add (&builder, "s", (const char *) l->data);
+      g_dbus_method_invocation_return_value (invocation, g_variant_new ("(as)", &builder));
+      return;
     }
   else
     {

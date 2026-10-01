@@ -85,6 +85,37 @@ run_command (TandemPlugin *plugin, const char *key)
     g_warning ("runcommand: %s failed: %s", command, error->message);
 }
 
+GVariant *
+tandem_runcommand_plugin_list (TandemPlugin *plugin)
+{
+  g_autoptr(JsonObject) commands = load_commands (plugin);
+  GVariantBuilder builder;
+  JsonObjectIter iter;
+  const char *key;
+  JsonNode *node;
+
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(sss)"));
+  json_object_iter_init (&iter, commands);
+  while (json_object_iter_next (&iter, &key, &node))
+    {
+      JsonObject *entry;
+
+      if (!JSON_NODE_HOLDS_OBJECT (node))
+        continue;
+      entry = json_node_get_object (node);
+      g_variant_builder_add (&builder, "(sss)", key,
+                             json_object_has_member (entry, "name") ? json_object_get_string_member (entry, "name") : "",
+                             json_object_has_member (entry, "command") ? json_object_get_string_member (entry, "command") : "");
+    }
+  return g_variant_builder_end (&builder);
+}
+
+void
+tandem_runcommand_plugin_run (TandemPlugin *plugin, const char *key)
+{
+  run_command (plugin, key);
+}
+
 static void
 runcommand_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
 {

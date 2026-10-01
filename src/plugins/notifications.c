@@ -354,6 +354,26 @@ tandem_notifications_plugin_list (TandemPlugin *plugin)
   return g_hash_table_get_values (TANDEM_NOTIFICATIONS_PLUGIN (plugin)->notifications);
 }
 
+GVariant *
+tandem_notifications_plugin_describe (TandemPlugin *plugin)
+{
+  TandemNotificationsPlugin *self = TANDEM_NOTIFICATIONS_PLUGIN (plugin);
+  GVariantBuilder builder;
+  GHashTableIter iter;
+  gpointer value;
+
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(ssss)"));
+  g_hash_table_iter_init (&iter, self->notifications);
+  while (g_hash_table_iter_next (&iter, NULL, &value))
+    {
+      RemoteNotification *n = value;
+
+      g_variant_builder_add (&builder, "(ssss)", n->id, n->app_name != NULL ? n->app_name : "",
+                             n->title != NULL ? n->title : "", n->text != NULL ? n->text : "");
+    }
+  return g_variant_builder_end (&builder);
+}
+
 void
 tandem_notifications_plugin_dismiss (TandemPlugin *plugin, const char *id)
 {

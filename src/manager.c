@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "manager.h"
+#include "mdns.h"
 #include "plugin.h"
 
 #include <string.h>
@@ -12,6 +13,7 @@ struct _TandemManager
 
   TandemConfig *config;
   TandemLan *lan;
+  TandemMdns *mdns;
   GListStore *devices;
 };
 
@@ -210,6 +212,11 @@ tandem_manager_start (TandemManager *self, GError **error)
   g_signal_connect (self->lan, "link-established", G_CALLBACK (link_established_cb), self);
   if (!tandem_lan_start (self->lan, error))
     return FALSE;
+  if (g_settings_get_boolean (tandem_config_get_settings (self->config), "mdns"))
+    {
+      self->mdns = tandem_mdns_new (self->config, self->lan);
+      tandem_mdns_start (self->mdns);
+    }
   update_periodic (self);
   return TRUE;
 }
@@ -219,6 +226,11 @@ tandem_manager_stop (TandemManager *self)
 {
   guint n;
 
+  if (self->mdns != NULL)
+    {
+      tandem_mdns_stop (self->mdns);
+      g_clear_object (&self->mdns);
+    }
   if (self->lan != NULL)
     {
       g_signal_handlers_disconnect_by_data (self->lan, self);
