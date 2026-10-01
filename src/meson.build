@@ -44,6 +44,7 @@ tandem_sources = files(
   'plugins/sendnotifications.c',
   'plugins/remoteinput.c',
   'ui/sms-page.c',
+  'ui/preferences.c',
   'dbus-api.c',
   'cli.c',
   'smoke.c',

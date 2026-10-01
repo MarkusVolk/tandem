@@ -179,10 +179,33 @@ refresh_activated (GSimpleAction *action, GVariant *parameter, gpointer user_dat
   tandem_app_refresh (TANDEM_APP (user_data));
 }
 
+GtkWidget *tandem_preferences_dialog_new (TandemApp *app);
+void       tandem_show_about_dialog (GtkWidget *parent);
+
+static void
+preferences_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  TandemApp *self = TANDEM_APP (user_data);
+
+  tandem_app_show_window (self);
+  adw_dialog_present (ADW_DIALOG (tandem_preferences_dialog_new (self)), GTK_WIDGET (self->window));
+}
+
+static void
+about_activated (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+  TandemApp *self = TANDEM_APP (user_data);
+
+  tandem_app_show_window (self);
+  tandem_show_about_dialog (GTK_WIDGET (self->window));
+}
+
 static const GActionEntry app_actions[] = {
   { "quit", quit_activated },
   { "show", show_activated },
   { "refresh", refresh_activated },
+  { "preferences", preferences_activated },
+  { "about", about_activated },
 };
 
 static void

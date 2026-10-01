@@ -198,6 +198,8 @@ tandem_window_new (TandemApp *app)
   devices = tandem_manager_get_devices (self->manager);
 
   g_menu_append (menu, "Refresh", "app.refresh");
+  g_menu_append (menu, "Preferences", "app.preferences");
+  g_menu_append (menu, "About Tandem", "app.about");
   g_menu_append (menu, "Quit", "app.quit");
   gtk_menu_button_set_icon_name (GTK_MENU_BUTTON (menu_button), "open-menu-symbolic");
   gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (menu_button), G_MENU_MODEL (menu));
