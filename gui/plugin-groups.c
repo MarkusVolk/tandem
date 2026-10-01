@@ -388,13 +388,23 @@ reply_clicked_cb (GtkButton *button, gpointer user_data)
 }
 
 static void
+expander_toggled_cb (GObject *expander, GParamSpec *pspec, gpointer user_data)
+{
+  g_object_set_data (G_OBJECT (user_data), "expanded",
+                     adw_expander_row_get_expanded (ADW_EXPANDER_ROW (expander)) ? GINT_TO_POINTER (1) : NULL);
+}
+
+static void
 notifications_refresh (GtkWidget *group, TandemGuiDevice *device, GVariant *state)
 {
   GtkWidget *listbox = listbox_in (group);
+  GtkWidget *expander = adw_expander_row_new ();
   g_autoptr(GVariant) list = g_variant_lookup_value (state, "notifications", G_VARIANT_TYPE ("aa{sv}"));
   GVariantIter iter;
   GVariant *item;
   guint count = 0;
+  g_autofree char *title_text = NULL;
+  gboolean expanded = g_object_get_data (G_OBJECT (group), "expanded") != NULL;
 
   if (list != NULL)
     {
@@ -416,7 +426,7 @@ notifications_refresh (GtkWidget *group, TandemGuiDevice *device, GVariant *stat
           adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
           adw_preferences_row_set_use_markup (ADW_PREFERENCES_ROW (row), FALSE);
           adw_action_row_set_subtitle (ADW_ACTION_ROW (row), subtitle);
-          adw_action_row_set_subtitle_lines (ADW_ACTION_ROW (row), 2);
+          adw_action_row_set_subtitle_lines (ADW_ACTION_ROW (row), 1);
           if (replyable)
             {
               GtkWidget *reply = gtk_button_new_from_icon_name ("mail-reply-sender-symbolic");
@@ -433,18 +443,17 @@ notifications_refresh (GtkWidget *group, TandemGuiDevice *device, GVariant *stat
           g_object_set_data_full (G_OBJECT (dismiss), "id", g_strdup (id), g_free);
           g_signal_connect (dismiss, "clicked", G_CALLBACK (dismiss_clicked_cb), NULL);
           adw_action_row_add_suffix (ADW_ACTION_ROW (row), dismiss);
-          gtk_list_box_append (GTK_LIST_BOX (listbox), row);
+          adw_expander_row_add_row (ADW_EXPANDER_ROW (expander), row);
           g_variant_unref (item);
           count++;
         }
     }
-  if (count == 0)
-    {
-      GtkWidget *row = adw_action_row_new ();
-
-      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), "No notifications");
-      gtk_list_box_append (GTK_LIST_BOX (listbox), row);
-    }
+  title_text = count == 1 ? g_strdup ("1 notification") : g_strdup_printf ("%u notifications", count);
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (expander), title_text);
+  adw_expander_row_set_enable_expansion (ADW_EXPANDER_ROW (expander), count > 0);
+  adw_expander_row_set_expanded (ADW_EXPANDER_ROW (expander), expanded && count > 0);
+  g_signal_connect_object (expander, "notify::expanded", G_CALLBACK (expander_toggled_cb), group, 0);
+  gtk_list_box_append (GTK_LIST_BOX (listbox), expander);
 }
 
 static GtkWidget *

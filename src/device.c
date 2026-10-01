@@ -801,6 +801,7 @@ tandem_device_send_packet (TandemDevice *self, TandemPacket *packet)
       g_signal_connect (transfer, "finished", G_CALLBACK (upload_finished_cb), self);
       g_ptr_array_add (self->uploads, transfer);
     }
+  g_debug ("device %s: sending %s", self->id, packet->type);
   tandem_link_send (self->link, packet);
 }
 
