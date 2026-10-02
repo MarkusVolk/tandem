@@ -3,14 +3,18 @@
 Tandem connects a Linux desktop with phones running [KDE Connect](https://kdeconnect.kde.org/).
 It speaks the KDE Connect protocol (version 8) and is written in C with GLib and GIO.
 
-It comes in two parts:
+It comes in three parts:
 
 - `tandemd`, a background service without any toolkit dependency. It does the networking,
   pairing and all plugins, exports a status notifier item with a menu, announces itself over
   mDNS and offers a D-Bus API (`de.flk.Tandem.Daemon`) that the `tandem` command line tool and
   the frontends use.
 - `tandem-gtk`, a GTK 4 and libadwaita frontend (`de.flk.Tandem`) for the window, dialogs and
-  the presenter overlay. Other frontends can be written against the same D-Bus API.
+  the presenter overlay.
+- `tandem-kirigami`, a Qt 6 and Kirigami frontend under `qt/` with the same pages and the same
+  application id. Only one of the two frontends is installed at a time.
+
+Other frontends can be written against the same D-Bus API.
 
 The daemon talks only to standard desktop services: `org.freedesktop.Notifications`, MPRIS,
 UPower, `org.freedesktop.login1`, PipeWire's PulseAudio interface, the
@@ -33,6 +37,18 @@ and muting during calls), gstreamer-1.0 (`-Dgstreamer`, ring tone), wayland-clie
 wayland-protocols and wayland-scanner (`-Dwayland`, wlroots remote input and clipboard). The
 frontend needs gtk4 and libadwaita-1 (`-Dgui`). At run time: glib-networking and xdg-user-dirs;
 Avahi, xdg-desktop-portal and sound-theme-freedesktop are optional.
+
+The Kirigami frontend is a separate CMake project following KDE conventions. Build the daemon
+with `-Dgui=disabled`, then:
+
+```
+cmake -S qt -B build-qt
+cmake --build build-qt
+cmake --install build-qt
+```
+
+It needs Qt 6 (Core, Gui, Qml, Quick, QuickControls2, DBus, Widgets), extra-cmake-modules and
+KF6 Kirigami; at run time also Kirigami Addons and qqc2-desktop-style.
 
 ## Running
 
