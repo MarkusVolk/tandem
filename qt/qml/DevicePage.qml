@@ -25,6 +25,20 @@ Kirigami.ScrollablePage {
     property var deviceSettings: ({})
     property bool notificationsExpanded: false
 
+    readonly property var pluginTitles: ({
+        "ping": "Ping", "battery": "Battery", "connectivity": "Mobile network", "findmyphone": "Find my phone",
+        "lock": "Lock", "runcommand": "Run commands", "notifications": "Notifications", "share": "Share",
+        "mpriscontrol": "Media control", "systemvolume": "System volume", "mprisremote": "Remote media",
+        "mousepad": "Remote input", "presenter": "Presenter", "contacts": "Contacts", "telephony": "Telephony",
+        "sms": "Messages", "clipboard": "Clipboard", "sendnotifications": "Send notifications",
+        "remoteinput": "Remote keyboard", "kodicontrol": "Kodi media control"
+    })
+
+    function pluginTitle(name) {
+        const title = pluginTitles[name]
+        return title !== undefined ? title : String(name)
+    }
+
     function refreshPlugin(name) {
         if (!device.hasPlugin(name))
             return
@@ -380,8 +394,8 @@ Kirigami.ScrollablePage {
                     Repeater {
                         model: Daemon.allPlugins()
                         delegate: FormCard.FormSwitchDelegate {
-                            required property string modelData
-                            text: PluginTitles.title(modelData)
+                            required property var modelData
+                            text: page.pluginTitle(modelData)
                             checked: {
                                 const disabled = page.deviceSettings["disabled-plugins"]
                                 return !(disabled && disabled.indexOf(modelData) >= 0)

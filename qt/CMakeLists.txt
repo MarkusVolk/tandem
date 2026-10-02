@@ -26,8 +26,6 @@ qt_add_executable(tandem-kirigami
   src/frontend.cpp
 )
 
-set_source_files_properties(qml/PluginTitles.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
-
 qt_add_qml_module(tandem-kirigami
   URI de.flk.Tandem
   VERSION 1.0
@@ -35,7 +33,6 @@ qt_add_qml_module(tandem-kirigami
   NO_PLUGIN
   QML_FILES
     qml/Main.qml
-    qml/PluginTitles.qml
     qml/DevicesPage.qml
     qml/DevicePage.qml
     qml/SmsPage.qml
