@@ -2,7 +2,7 @@
 Name=Tandem
 GenericName=Phone Integration
 Comment=Connect your phone with the KDE Connect protocol
-Exec=tandem-kirigami
+Exec=tandem-qt
 Icon=de.flk.Tandem
 Terminal=false
 Type=Application

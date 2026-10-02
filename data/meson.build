@@ -4,7 +4,7 @@ conf = configuration_data()
 conf.set('APP_ID', app_id)
 conf.set('BINDIR', bindir)
 
-if build_gui
+if build_gtk
   configure_file(
     input: 'de.flk.Tandem.desktop.in',
     output: app_id + '.desktop',

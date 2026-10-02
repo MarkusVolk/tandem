@@ -16,9 +16,18 @@ glib_dep = dependency('glib-2.0', version: '>= 2.76')
 gio_dep = dependency('gio-2.0')
 gio_unix_dep = dependency('gio-unix-2.0')
 json_dep = dependency('json-glib-1.0')
-gtk_dep = dependency('gtk4', version: '>= 4.14', required: get_option('gui'))
-adw_dep = dependency('libadwaita-1', version: '>= 1.5', required: get_option('gui'))
-build_gui = gtk_dep.found() and adw_dep.found()
+gtk_dep = dependency('gtk4', version: '>= 4.14', required: get_option('gtk'))
+adw_dep = dependency('libadwaita-1', version: '>= 1.5', required: get_option('gtk'))
+build_gtk = gtk_dep.found() and adw_dep.found()
+build_qt = add_languages('cpp', native: false, required: get_option('qt'))
+if build_qt
+  qt_dep = dependency('qt6', modules: ['Core', 'Gui', 'Qml', 'Quick', 'QuickControls2', 'DBus', 'Widgets'],
+    required: get_option('qt'))
+  build_qt = qt_dep.found()
+endif
+if build_gtk and build_qt
+  error('The GTK and the Qt frontend share the application id, enable only one of them')
+endif
 gnutls_dep = dependency('gnutls')
 pulse_dep = dependency('libpulse-mainloop-glib', required: get_option('pulse'))
 wayland_dep = dependency('wayland-client', required: get_option('wayland'))
@@ -54,7 +63,10 @@ if wayland_dep.found()
 endif
 subdir('data')
 subdir('src')
-if build_gui
-  subdir('gui')
+if build_gtk
+  subdir('gtk')
+endif
+if build_qt
+  subdir('qt')
 endif
 

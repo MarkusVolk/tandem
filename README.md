@@ -11,7 +11,7 @@ It comes in three parts:
   the frontends use.
 - `tandem-gtk`, a GTK 4 and libadwaita frontend (`de.flk.Tandem`) for the window, dialogs and
   the presenter overlay.
-- `tandem-kirigami`, a Qt 6 and Kirigami frontend under `qt/` with the same pages and the same
+- `tandem-qt`, a Qt 6 and Kirigami frontend under `qt/` with the same pages and the same
   application id. Only one of the two frontends is installed at a time.
 
 Other frontends can be written against the same D-Bus API.
@@ -35,20 +35,13 @@ Dependencies of the daemon: glib-2.0, gio-unix-2.0, json-glib-1.0, gnutls and xk
 Optional, each behind a meson feature option: libpulse-mainloop-glib (`-Dpulse`, system volume
 and muting during calls), gstreamer-1.0 (`-Dgstreamer`, ring tone), wayland-client,
 wayland-protocols and wayland-scanner (`-Dwayland`, wlroots remote input and clipboard). The
-frontend needs gtk4 and libadwaita-1 (`-Dgui`). At run time: glib-networking and xdg-user-dirs;
+GTK frontend needs gtk4 and libadwaita-1 (`-Dgtk`). At run time: glib-networking and xdg-user-dirs;
 Avahi, xdg-desktop-portal and sound-theme-freedesktop are optional.
 
-The Kirigami frontend is a separate CMake project following KDE conventions. Build the daemon
-with `-Dgui=disabled`, then:
-
-```
-cmake -S qt -B build-qt
-cmake --build build-qt
-cmake --install build-qt
-```
-
-It needs Qt 6 (Core, Gui, Qml, Quick, QuickControls2, DBus, Widgets), extra-cmake-modules and
-KF6 Kirigami; at run time also Kirigami Addons and qqc2-desktop-style.
+The Kirigami frontend is built with `-Dgtk=disabled -Dqt=enabled`; the two frontends share the
+application id, so only one of them can be enabled. It needs Qt 6 (Core, Gui, Qml, Quick,
+QuickControls2, DBus, Widgets) with moc and rcc; at run time also KF6 Kirigami, Kirigami Addons
+and qqc2-desktop-style.
 
 ## Running
 

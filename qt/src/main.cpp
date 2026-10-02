@@ -12,7 +12,7 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("tandem-kirigami"));
+    app.setApplicationName(QStringLiteral("tandem-qt"));
     app.setApplicationDisplayName(QStringLiteral("Tandem"));
     app.setOrganizationDomain(QStringLiteral("flk.de"));
     app.setDesktopFileName(QStringLiteral("de.flk.Tandem"));

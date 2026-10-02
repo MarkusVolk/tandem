@@ -1,3 +1,3 @@
 [D-BUS Service]
 Name=de.flk.Tandem
-Exec=@KDE_INSTALL_FULL_BINDIR@/tandem-kirigami --service
+Exec=@BINDIR@/tandem-qt --service

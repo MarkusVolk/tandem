@@ -1,0 +1,14 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <qresource prefix="/de/flk/Tandem">
+    <file>qml/AddCommandDialog.qml</file>
+    <file>qml/ConversationPage.qml</file>
+    <file>qml/DevicePage.qml</file>
+    <file>qml/DevicesPage.qml</file>
+    <file>qml/Main.qml</file>
+    <file>qml/PresenterWindow.qml</file>
+    <file>qml/ReplyDialog.qml</file>
+    <file>qml/SettingsPage.qml</file>
+    <file>qml/SmsPage.qml</file>
+  </qresource>
+</RCC>
