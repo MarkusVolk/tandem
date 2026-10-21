@@ -113,6 +113,12 @@ request_next_batch (TandemContactsPlugin *self)
   tandem_plugin_send (TANDEM_PLUGIN (self), packet);
 }
 
+static gboolean
+uid_is_valid (const char *uid)
+{
+  return uid != NULL && *uid != '\0' && *uid != '.' && strchr (uid, '/') == NULL;
+}
+
 static void
 handle_timestamps (TandemContactsPlugin *self, TandemPacket *packet)
 {
@@ -130,7 +136,7 @@ handle_timestamps (TandemContactsPlugin *self, TandemPacket *packet)
       gint64 stamp = json_object_has_member (packet->body, uid) ? json_object_get_int_member (packet->body, uid) : 0;
       TandemContact *existing;
 
-      if (uid == NULL)
+      if (!uid_is_valid (uid))
         continue;
       g_hash_table_add (seen, (gpointer) uid);
       existing = g_hash_table_lookup (self->contacts, uid);
@@ -170,7 +176,7 @@ handle_vcards (TandemContactsPlugin *self, TandemPacket *packet)
       g_autofree char *file = NULL;
       g_autofree char *path = NULL;
 
-      if (uid == NULL || !json_object_has_member (packet->body, uid))
+      if (!uid_is_valid (uid) || !json_object_has_member (packet->body, uid))
         continue;
       text = json_object_get_string_member (packet->body, uid);
       if (text == NULL)
