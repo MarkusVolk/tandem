@@ -88,7 +88,7 @@
       <summary>Mute the default sink while this device is on a call</summary>
     </key>
     <key name="disabled-plugins" type="as">
-      <default>[]</default>
+      <default>['clipboard']</default>
       <summary>Plugins switched off for this device</summary>
     </key>
     <key name="commands" type="s">
