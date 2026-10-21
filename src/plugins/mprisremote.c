@@ -14,6 +14,7 @@ G_DECLARE_FINAL_TYPE (TandemMprisremotePlugin, tandem_mprisremote_plugin, TANDEM
 
 typedef struct
 {
+  gint ref_count;
   TandemMprisremotePlugin *plugin;
   char *name;
   char *bus_name;
@@ -266,18 +267,18 @@ static const GDBusInterfaceVTable vtable = {
   .set_property = set_property,
 };
 
-static void
-export_free (Export *ex)
+static Export *
+export_ref (Export *ex)
 {
-  if (ex->connection != NULL)
-    {
-      if (ex->root_registration != 0)
-        g_dbus_connection_unregister_object (ex->connection, ex->root_registration);
-      if (ex->player_registration != 0)
-        g_dbus_connection_unregister_object (ex->connection, ex->player_registration);
-      g_dbus_connection_close (ex->connection, NULL, NULL, NULL);
-      g_object_unref (ex->connection);
-    }
+  ex->ref_count++;
+  return ex;
+}
+
+static void
+export_unref (Export *ex)
+{
+  if (--ex->ref_count > 0)
+    return;
   g_free (ex->name);
   g_free (ex->bus_name);
   g_free (ex->title);
@@ -287,6 +288,24 @@ export_free (Export *ex)
   g_free (ex->art_file);
   g_free (ex->loop_status);
   g_free (ex);
+}
+
+static void
+export_detach (Export *ex)
+{
+  if (ex->connection != NULL)
+    {
+      if (ex->root_registration != 0)
+        g_dbus_connection_unregister_object (ex->connection, ex->root_registration);
+      if (ex->player_registration != 0)
+        g_dbus_connection_unregister_object (ex->connection, ex->player_registration);
+      g_dbus_connection_close (ex->connection, NULL, NULL, NULL);
+      g_clear_object (&ex->connection);
+    }
+  ex->root_registration = 0;
+  ex->player_registration = 0;
+  ex->plugin = NULL;
+  export_unref (ex);
 }
 
 static char *
@@ -339,12 +358,14 @@ connection_ready_cb (GObject *source, GAsyncResult *result, gpointer user_data)
   if (connection == NULL)
     {
       g_warning ("mprisremote: no bus connection: %s", error->message);
+      export_unref (ex);
       return;
     }
-  if (g_hash_table_lookup (ex->plugin->exports, ex->name) != ex)
+  if (ex->plugin == NULL)
     {
       g_dbus_connection_close (connection, NULL, NULL, NULL);
       g_object_unref (connection);
+      export_unref (ex);
       return;
     }
   ex->connection = connection;
@@ -357,6 +378,7 @@ connection_ready_cb (GObject *source, GAsyncResult *result, gpointer user_data)
                           G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
   send_request (ex, "requestNowPlaying", NULL);
   send_request (ex, "requestVolume", NULL);
+  export_unref (ex);
 }
 
 static Export *
@@ -368,6 +390,7 @@ export_new (TandemMprisremotePlugin *self, const char *name)
   g_autofree char *player_part = sanitize (name);
   g_autofree char *address = g_dbus_address_get_for_bus_sync (G_BUS_TYPE_SESSION, NULL, NULL);
 
+  ex->ref_count = 1;
   ex->plugin = self;
   ex->name = g_strdup (name);
   ex->bus_name = g_strdup_printf ("org.mpris.MediaPlayer2.tandem.%s.%s", device_part, player_part);
@@ -377,7 +400,7 @@ export_new (TandemMprisremotePlugin *self, const char *name)
     g_dbus_connection_new_for_address (address,
                                        G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
                                        G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
-                                       NULL, NULL, connection_ready_cb, ex);
+                                       NULL, NULL, connection_ready_cb, export_ref (ex));
   return ex;
 }
 
@@ -416,9 +439,9 @@ album_art_cb (GObject *source, GAsyncResult *result, gpointer user_data)
   Export *ex = user_data;
   g_autoptr(GError) error = NULL;
 
-  if (tandem_transfer_download_to_file_finish (TANDEM_TRANSFER (source), result, &error) &&
-      g_hash_table_lookup (ex->plugin->exports, ex->name) == ex)
+  if (tandem_transfer_download_to_file_finish (TANDEM_TRANSFER (source), result, &error) && ex->plugin != NULL)
     emit_properties_changed (ex);
+  export_unref (ex);
   g_object_unref (source);
 }
 
@@ -528,7 +551,7 @@ mprisremote_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
       g_mkdir_with_parents (self->art_dir, 0700);
       g_free (ex->art_file);
       ex->art_file = g_steal_pointer (&path);
-      tandem_transfer_download_to_file_async (transfer, file, NULL, album_art_cb, ex);
+      tandem_transfer_download_to_file_async (transfer, file, NULL, album_art_cb, export_ref (ex));
       return;
     }
   update_now_playing (self, ex, packet);
@@ -598,5 +621,5 @@ tandem_mprisremote_plugin_class_init (TandemMprisremotePluginClass *klass)
 static void
 tandem_mprisremote_plugin_init (TandemMprisremotePlugin *self)
 {
-  self->exports = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) export_free);
+  self->exports = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) export_detach);
 }

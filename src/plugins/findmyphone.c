@@ -86,18 +86,42 @@ stop_timeout_cb (gpointer user_data)
   return G_SOURCE_REMOVE;
 }
 
+static GWeakRef *
+weak_ref_new (gpointer object)
+{
+  GWeakRef *ref = g_new0 (GWeakRef, 1);
+
+  g_weak_ref_init (ref, object);
+  return ref;
+}
+
+static void
+weak_ref_free (GWeakRef *ref)
+{
+  g_weak_ref_clear (ref);
+  g_free (ref);
+}
+
 static void
 stop_action_cb (guint32 id, const char *action, const char *reply, gpointer user_data)
 {
-  stop_ringing (TANDEM_FINDMYPHONE_PLUGIN (user_data));
+  g_autoptr(TandemFindmyphonePlugin) self = g_weak_ref_get (user_data);
+
+  if (self != NULL)
+    stop_ringing (self);
 }
 
 static void
 notification_sent_cb (GObject *source, GAsyncResult *result, gpointer user_data)
 {
-  TandemFindmyphonePlugin *self = user_data;
+  g_autoptr(TandemFindmyphonePlugin) self = g_weak_ref_get (user_data);
+  guint32 id = tandem_notification_send_finish (result, NULL);
 
-  self->notification_id = tandem_notification_send_finish (result, NULL);
+  weak_ref_free (user_data);
+  if (self != NULL)
+    self->notification_id = id;
+  else if (id != 0)
+    tandem_notify_close (id);
 }
 
 static void
@@ -130,8 +154,9 @@ start_ringing (TandemFindmyphonePlugin *self)
   tandem_notification_set_urgency (notification, 2);
   tandem_notification_set_resident (notification, TRUE);
   tandem_notification_add_action (notification, "stop", "Stop");
-  tandem_notification_set_callbacks (notification, stop_action_cb, NULL, self, NULL);
-  tandem_notification_send_async (notification, notification_sent_cb, self);
+  tandem_notification_set_callbacks (notification, stop_action_cb, NULL, weak_ref_new (self),
+                                     (GDestroyNotify) weak_ref_free);
+  tandem_notification_send_async (notification, notification_sent_cb, weak_ref_new (self));
   self->stop_id = g_timeout_add_seconds (RING_SECONDS, stop_timeout_cb, self);
 }
 

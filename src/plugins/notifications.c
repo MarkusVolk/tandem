@@ -13,6 +13,7 @@ G_DECLARE_FINAL_TYPE (TandemNotificationsPlugin, tandem_notifications_plugin, TA
 
 typedef struct
 {
+  gint ref_count;
   TandemNotificationsPlugin *plugin;
   char *id;
   char *app_name;
@@ -43,9 +44,18 @@ static const char *const notifications_outgoing[] = {
   NULL
 };
 
-static void
-remote_notification_free (RemoteNotification *n)
+static RemoteNotification *
+remote_notification_ref (RemoteNotification *n)
 {
+  g_atomic_int_inc (&n->ref_count);
+  return n;
+}
+
+static void
+remote_notification_unref (RemoteNotification *n)
+{
+  if (!g_atomic_int_dec_and_test (&n->ref_count))
+    return;
   g_free (n->id);
   g_free (n->app_name);
   g_free (n->title);
@@ -53,6 +63,13 @@ remote_notification_free (RemoteNotification *n)
   g_free (n->reply_id);
   g_strfreev (n->actions);
   g_free (n);
+}
+
+static void
+remote_notification_detach (RemoteNotification *n)
+{
+  n->plugin = NULL;
+  remote_notification_unref (n);
 }
 
 static void
@@ -97,8 +114,11 @@ static void
 action_cb (guint32 id, const char *action, const char *reply, gpointer user_data)
 {
   RemoteNotification *n = user_data;
-  TandemPlugin *plugin = TANDEM_PLUGIN (n->plugin);
+  TandemPlugin *plugin;
 
+  if (n->plugin == NULL)
+    return;
+  plugin = TANDEM_PLUGIN (n->plugin);
   if (g_str_equal (action, "inline-reply") && reply != NULL)
     {
       if (n->reply_id != NULL)
@@ -122,6 +142,8 @@ closed_cb (guint32 id, guint32 reason, gpointer user_data)
 {
   RemoteNotification *n = user_data;
 
+  if (n->plugin == NULL)
+    return;
   if (n->desktop_id == id)
     n->desktop_id = 0;
   if (reason == 2 && n->clearable)
@@ -140,8 +162,11 @@ sent_cb (GObject *source, GAsyncResult *result, gpointer user_data)
 
   if (id == 0)
     g_debug ("notification for %s failed: %s", n->app_name, error != NULL ? error->message : "?");
-  else if (g_hash_table_lookup (n->plugin->notifications, n->id) == n)
+  else if (n->plugin == NULL)
+    tandem_notify_close (id);
+  else
     n->desktop_id = id;
+  remote_notification_unref (n);
 }
 
 static void
@@ -171,8 +196,9 @@ show_notification (RemoteNotification *n, const char *icon_path)
 
       tandem_notification_add_action (notification, key, n->actions[i]);
     }
-  tandem_notification_set_callbacks (notification, action_cb, closed_cb, n, NULL);
-  tandem_notification_send_async (notification, sent_cb, n);
+  tandem_notification_set_callbacks (notification, action_cb, closed_cb, remote_notification_ref (n),
+                                     (GDestroyNotify) remote_notification_unref);
+  tandem_notification_send_async (notification, sent_cb, remote_notification_ref (n));
 }
 
 typedef struct
@@ -191,12 +217,14 @@ icon_downloaded_cb (GObject *source, GAsyncResult *result, gpointer user_data)
     {
       g_debug ("notification icon failed: %s", error->message);
       g_unlink (dl->path);
-      show_notification (dl->notification, NULL);
+      if (dl->notification->plugin != NULL)
+        show_notification (dl->notification, NULL);
     }
-  else
+  else if (dl->notification->plugin != NULL)
     {
       show_notification (dl->notification, dl->path);
     }
+  remote_notification_unref (dl->notification);
   g_free (dl->path);
   g_free (dl);
   g_object_unref (source);
@@ -243,6 +271,7 @@ notifications_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
   if (n == NULL)
     {
       n = g_new0 (RemoteNotification, 1);
+      n->ref_count = 1;
       n->plugin = self;
       n->id = g_strdup (id);
       g_hash_table_insert (self->notifications, g_strdup (id), n);
@@ -279,7 +308,8 @@ notifications_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
   hash = tandem_packet_get_string (packet, "payloadHash", NULL);
   if (hash != NULL && tandem_packet_has_payload (packet))
     {
-      g_autofree char *path = g_build_filename (self->icon_dir, hash, NULL);
+      g_autofree char *name = g_compute_checksum_for_string (G_CHECKSUM_SHA256, hash, -1);
+      g_autofree char *path = g_build_filename (self->icon_dir, name, NULL);
 
       if (g_file_test (path, G_FILE_TEST_EXISTS))
         {
@@ -298,7 +328,7 @@ notifications_handle_packet (TandemPlugin *plugin, TandemPacket *packet)
             }
           g_mkdir_with_parents (self->icon_dir, 0700);
           dl = g_new0 (IconDownload, 1);
-          dl->notification = n;
+          dl->notification = remote_notification_ref (n);
           dl->path = g_steal_pointer (&path);
           tandem_transfer_download_to_file_async (transfer, file, NULL, icon_downloaded_cb, dl);
         }
@@ -475,5 +505,5 @@ static void
 tandem_notifications_plugin_init (TandemNotificationsPlugin *self)
 {
   self->notifications = g_hash_table_new_full (g_str_hash, g_str_equal, g_free,
-                                               (GDestroyNotify) remote_notification_free);
+                                               (GDestroyNotify) remote_notification_detach);
 }
