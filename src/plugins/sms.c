@@ -47,6 +47,7 @@ struct _TandemSmsPlugin
 
   GListStore *threads;
   char *attachment_dir;
+  GHashTable *requested_attachments;
   gboolean requested;
 };
 
@@ -385,8 +386,11 @@ handle_attachment_file (TandemSmsPlugin *self, TandemPacket *packet)
   g_autofree char *base = g_path_get_basename (filename);
   g_autofree char *path = g_build_filename (self->attachment_dir, base, NULL);
   g_autoptr(GFile) file = g_file_new_for_path (path);
-  TandemTransfer *transfer = tandem_device_download (tandem_plugin_get_device (TANDEM_PLUGIN (self)), packet);
+  TandemTransfer *transfer;
 
+  if (!g_hash_table_remove (self->requested_attachments, base))
+    return;
+  transfer = tandem_device_download (tandem_plugin_get_device (TANDEM_PLUGIN (self)), packet);
   if (transfer == NULL)
     return;
   tandem_ensure_dir (self->attachment_dir, NULL);
@@ -472,6 +476,7 @@ tandem_sms_plugin_request_attachment (TandemSmsPlugin *self, TandemSmsAttachment
       open_path (path);
       return;
     }
+  g_hash_table_add (self->requested_attachments, g_path_get_basename (attachment->unique_identifier));
   packet = tandem_packet_new ("kdeconnect.sms.request_attachment");
   tandem_packet_set_int (packet, "part_id", attachment->part_id);
   tandem_packet_set_string (packet, "unique_identifier", attachment->unique_identifier);
@@ -650,6 +655,7 @@ tandem_sms_plugin_finalize (GObject *object)
 
   g_object_unref (self->threads);
   g_free (self->attachment_dir);
+  g_hash_table_unref (self->requested_attachments);
   G_OBJECT_CLASS (tandem_sms_plugin_parent_class)->finalize (object);
 }
 
@@ -681,4 +687,5 @@ static void
 tandem_sms_plugin_init (TandemSmsPlugin *self)
 {
   self->threads = g_list_store_new (TANDEM_TYPE_SMS_THREAD);
+  self->requested_attachments = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
 }

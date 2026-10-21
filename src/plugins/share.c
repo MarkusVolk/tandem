@@ -42,25 +42,35 @@ download_dir (void)
   if (configured != NULL && *configured != '\0')
     return g_steal_pointer (&configured);
   dir = g_get_user_special_dir (G_USER_DIRECTORY_DOWNLOAD);
-  if (dir == NULL)
-    dir = g_get_home_dir ();
+  if (dir == NULL || g_strcmp0 (dir, g_get_home_dir ()) == 0)
+    return g_build_filename (g_get_home_dir (), "Downloads", NULL);
   return g_strdup (dir);
 }
 
 typedef struct
 {
-  TandemSharePlugin *plugin;
+  gint ref_count;
+  TandemDevice *device;
   GFile *file;
   char *name;
-  gboolean open;
   gint64 last_modified;
   guint32 notification_id;
   gint64 last_percent;
 } Receive;
 
-static void
-receive_free (Receive *rx)
+static Receive *
+receive_ref (Receive *rx)
 {
+  rx->ref_count++;
+  return rx;
+}
+
+static void
+receive_unref (Receive *rx)
+{
+  if (--rx->ref_count > 0)
+    return;
+  g_clear_object (&rx->device);
   g_clear_object (&rx->file);
   g_free (rx->name);
   g_free (rx);
@@ -117,6 +127,7 @@ progress_sent_cb (GObject *source, GAsyncResult *result, gpointer user_data)
   Receive *rx = user_data;
 
   rx->notification_id = tandem_notification_send_finish (result, NULL);
+  receive_unref (rx);
 }
 
 static void
@@ -124,7 +135,6 @@ file_received_cb (GObject *source, GAsyncResult *result, gpointer user_data)
 {
   Receive *rx = user_data;
   g_autoptr(GError) error = NULL;
-  TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (rx->plugin));
   g_autoptr(TandemNotification) notification = NULL;
 
   if (!tandem_transfer_download_to_file_finish (TANDEM_TRANSFER (source), result, &error))
@@ -139,7 +149,7 @@ file_received_cb (GObject *source, GAsyncResult *result, gpointer user_data)
   else
     {
       g_autofree char *summary = g_strdup_printf ("Received %s", rx->name);
-      g_autofree char *body = g_strdup_printf ("from %s", tandem_device_get_name (device));
+      g_autofree char *body = g_strdup_printf ("from %s", tandem_device_get_name (rx->device));
 
       if (rx->last_modified > 0)
         {
@@ -155,17 +165,10 @@ file_received_cb (GObject *source, GAsyncResult *result, gpointer user_data)
       tandem_notification_add_action (notification, "folder", "Show in folder");
       tandem_notification_set_callbacks (notification, received_action_cb, NULL, g_object_ref (rx->file), g_object_unref);
       tandem_notification_send (notification);
-      if (play_in_kodi (g_file_peek_path (rx->file)))
-        ;
-      else if (rx->open)
-        {
-          g_autofree char *uri = g_file_get_uri (rx->file);
-
-          g_app_info_launch_default_for_uri (uri, NULL, NULL);
-        }
+      play_in_kodi (g_file_peek_path (rx->file));
     }
   g_object_unref (source);
-  receive_free (rx);
+  receive_unref (rx);
 }
 
 static void
@@ -174,23 +177,28 @@ receive_file (TandemSharePlugin *self, TandemPacket *packet)
   TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (self));
   g_autofree char *dir = download_dir ();
   g_autofree char *basename = g_path_get_basename (tandem_packet_get_string (packet, "filename", "file"));
+  const char *name = basename;
   g_autofree char *path = NULL;
   TandemTransfer *transfer;
   Receive *rx;
   g_autoptr(TandemNotification) notification = NULL;
   g_autofree char *body = NULL;
 
+  while (*name == '.')
+    name++;
+  if (*name == '\0')
+    name = "file";
   g_mkdir_with_parents (dir, 0755);
-  path = tandem_unique_filename (dir, basename);
+  path = tandem_unique_filename (dir, name);
   transfer = tandem_device_download (device, packet);
   if (transfer == NULL)
     return;
 
   rx = g_new0 (Receive, 1);
-  rx->plugin = self;
+  rx->ref_count = 1;
+  rx->device = g_object_ref (device);
   rx->file = g_file_new_for_path (path);
   rx->name = g_path_get_basename (path);
-  rx->open = tandem_packet_get_boolean (packet, "open", FALSE);
   rx->last_modified = tandem_packet_get_int (packet, "lastModified", 0);
 
   body = g_strdup_printf ("from %s", tandem_device_get_name (device));
@@ -198,7 +206,7 @@ receive_file (TandemSharePlugin *self, TandemPacket *packet)
   tandem_notification_set_icon (notification, "folder-download-symbolic");
   tandem_notification_set_hint (notification, "value", g_variant_new_int32 (0));
   tandem_notification_set_timeout (notification, 0);
-  tandem_notification_send_async (notification, progress_sent_cb, rx);
+  tandem_notification_send_async (notification, progress_sent_cb, receive_ref (rx));
 
   g_signal_connect (transfer, "progress", G_CALLBACK (progress_cb), rx);
   tandem_transfer_download_to_file_async (transfer, rx->file, NULL, file_received_cb, rx);
@@ -223,9 +231,12 @@ receive_url (TandemSharePlugin *self, const char *url)
 {
   g_autoptr(GError) error = NULL;
 
+  g_autofree char *scheme = g_uri_parse_scheme (url);
+
   if (play_in_kodi (url))
     return;
-  if (!g_app_info_launch_default_for_uri (url, NULL, &error))
+  if ((g_strcmp0 (scheme, "http") != 0 && g_strcmp0 (scheme, "https") != 0) ||
+      !g_app_info_launch_default_for_uri (url, NULL, &error))
     {
       TandemDevice *device = tandem_plugin_get_device (TANDEM_PLUGIN (self));
       g_autofree char *summary = g_strdup_printf ("Link from %s", tandem_device_get_name (device));
