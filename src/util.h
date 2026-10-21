@@ -13,5 +13,14 @@ char    *tandem_read_file          (const char *path, GError **error);
 gboolean tandem_write_file         (const char *path, const char *contents, gssize len, int mode, GError **error);
 char    *tandem_unique_filename    (const char *dir, const char *name);
 gint64   tandem_now_ms             (void);
+void     tandem_read_line_async    (GBufferedInputStream *stream,
+                                    gsize                 max,
+                                    GCancellable         *cancellable,
+                                    GAsyncReadyCallback   callback,
+                                    gpointer              user_data);
+char    *tandem_read_line_finish   (GBufferedInputStream *stream,
+                                    GAsyncResult         *result,
+                                    gsize                *length,
+                                    GError              **error);
 
 G_END_DECLS

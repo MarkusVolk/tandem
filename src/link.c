@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "link.h"
+#include "util.h"
 
 struct _TandemLink
 {
@@ -99,8 +100,7 @@ line_read_cb (GObject *source, GAsyncResult *result, gpointer user_data)
   g_autoptr(TandemLink) self = user_data;
   g_autoptr(GError) error = NULL;
   gsize length = 0;
-  g_autofree char *line = g_data_input_stream_read_line_finish_utf8 (G_DATA_INPUT_STREAM (source),
-                                                                      result, &length, &error);
+  g_autofree char *line = tandem_read_line_finish (G_BUFFERED_INPUT_STREAM (source), result, &length, &error);
 
   if (self->closed)
     return;
@@ -127,7 +127,7 @@ read_next_line (TandemLink *self)
 {
   if (self->closed)
     return;
-  g_data_input_stream_read_line_async (self->reader, G_PRIORITY_DEFAULT, self->cancellable,
+  tandem_read_line_async (G_BUFFERED_INPUT_STREAM (self->reader), TANDEM_MAX_PACKET_SIZE, self->cancellable,
                                        line_read_cb, g_object_ref (self));
 }
 

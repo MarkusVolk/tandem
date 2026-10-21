@@ -146,8 +146,7 @@ secure_identity_read_cb (GObject *source, GAsyncResult *result, gpointer user_da
   g_autoptr(GError) error = NULL;
   g_autoptr(TandemPacket) secure = NULL;
   gsize length = 0;
-  g_autofree char *line = g_data_input_stream_read_line_finish_utf8 (G_DATA_INPUT_STREAM (source),
-                                                                      result, &length, &error);
+  g_autofree char *line = tandem_read_line_finish (G_BUFFERED_INPUT_STREAM (source), result, &length, &error);
 
   if (line == NULL)
     {
@@ -195,7 +194,7 @@ secure_identity_written_cb (GObject *source, GAsyncResult *result, gpointer user
       handshake_fail (task, g_steal_pointer (&error));
       return;
     }
-  g_data_input_stream_read_line_async (hs->reader, G_PRIORITY_DEFAULT, hs->cancellable,
+  tandem_read_line_async (G_BUFFERED_INPUT_STREAM (hs->reader), IDENTITY_MAX_SIZE, hs->cancellable,
                                        secure_identity_read_cb, task);
 }
 
@@ -423,8 +422,7 @@ plain_identity_read_cb (GObject *source, GAsyncResult *result, gpointer user_dat
   Handshake *hs = g_task_get_task_data (task);
   g_autoptr(GError) error = NULL;
   gsize length = 0;
-  g_autofree char *line = g_data_input_stream_read_line_finish_utf8 (G_DATA_INPUT_STREAM (source),
-                                                                      result, &length, &error);
+  g_autofree char *line = tandem_read_line_finish (G_BUFFERED_INPUT_STREAM (source), result, &length, &error);
   const char *target;
   gint64 target_version;
 
@@ -497,7 +495,7 @@ tandem_handshake_accept_async (TandemConfig        *config,
   hs->connection = g_object_ref (connection);
   tandem_configure_socket (g_socket_connection_get_socket (connection));
   hs->reader = make_reader (g_io_stream_get_input_stream (G_IO_STREAM (connection)), IDENTITY_MAX_SIZE);
-  g_data_input_stream_read_line_async (hs->reader, G_PRIORITY_DEFAULT, hs->cancellable,
+  tandem_read_line_async (G_BUFFERED_INPUT_STREAM (hs->reader), IDENTITY_MAX_SIZE, hs->cancellable,
                                        plain_identity_read_cb, task);
 }
 
