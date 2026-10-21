@@ -114,7 +114,7 @@ accept_certificate_cb (GTlsConnection *connection, GTlsCertificate *peer, GTlsCe
 {
   TandemTransfer *self = user_data;
 
-  return self->peer_certificate == NULL || g_tls_certificate_is_same (peer, self->peer_certificate);
+  return self->peer_certificate != NULL && g_tls_certificate_is_same (peer, self->peer_certificate);
 }
 
 static void pump (TandemTransfer *self);
@@ -205,9 +205,19 @@ download_handshake_cb (GObject *source, GAsyncResult *result, gpointer user_data
   TandemTransfer *self = user_data;
   GError *error = NULL;
 
+  GTlsCertificate *peer;
+
   if (!g_tls_connection_handshake_finish (G_TLS_CONNECTION (source), result, &error))
     {
       finish (self, error);
+      return;
+    }
+  /* With no validation flags set, accept-certificate is never emitted on the client side */
+  peer = g_tls_connection_get_peer_certificate (G_TLS_CONNECTION (source));
+  if (self->peer_certificate == NULL || peer == NULL || !g_tls_certificate_is_same (peer, self->peer_certificate))
+    {
+      finish (self, g_error_new_literal (G_TLS_ERROR, G_TLS_ERROR_BAD_CERTIFICATE,
+                                         "Payload peer certificate does not match the device"));
       return;
     }
   self->source = g_object_ref (g_io_stream_get_input_stream (self->tls));
