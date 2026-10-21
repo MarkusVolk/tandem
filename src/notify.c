@@ -277,6 +277,7 @@ tandem_notification_send_async (TandemNotification *self, GAsyncReadyCallback ca
   GTask *task = g_task_new (NULL, NULL, callback, user_data);
   GVariantBuilder actions;
   Pending *p = NULL;
+  g_autofree char *body = NULL;
 
   if (!ensure_bus ())
     {
@@ -302,10 +303,13 @@ tandem_notification_send_async (TandemNotification *self, GAsyncReadyCallback ca
 
   if (self->replaces_id != 0)
     g_hash_table_remove (pending, GUINT_TO_POINTER (self->replaces_id));
+  if (tandem_notify_has_capability ("body-markup"))
+    body = g_markup_escape_text (self->body, -1);
 
   g_dbus_connection_call (bus, FDO_NAME, FDO_PATH, FDO_IFACE, "Notify",
                           g_variant_new ("(susssasa{sv}i)", "Tandem", self->replaces_id, self->icon,
-                                         self->summary, self->body, &actions, &self->hints, self->timeout_ms),
+                                         self->summary, body != NULL ? body : self->body, &actions, &self->hints,
+                                         self->timeout_ms),
                           G_VARIANT_TYPE ("(u)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, notify_reply_cb, task);
   self->hints_started = FALSE;
 }

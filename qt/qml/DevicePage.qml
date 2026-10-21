@@ -221,8 +221,8 @@ Kirigami.ScrollablePage {
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 0
-                                    QQC2.Label { text: modelData.title && modelData.title.length > 0 ? modelData.title : modelData.text; elide: Text.ElideRight; Layout.fillWidth: true }
-                                    QQC2.Label { text: modelData.app; opacity: 0.7; font: Kirigami.Theme.smallFont; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    QQC2.Label { textFormat: Text.PlainText; text: modelData.title && modelData.title.length > 0 ? modelData.title : modelData.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    QQC2.Label { textFormat: Text.PlainText; text: modelData.app; opacity: 0.7; font: Kirigami.Theme.smallFont; elide: Text.ElideRight; Layout.fillWidth: true }
                                 }
                                 QQC2.ToolButton {
                                     visible: modelData.replyable === true
@@ -360,8 +360,8 @@ Kirigami.ScrollablePage {
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 0
-                                    QQC2.Label { text: modelData[1]; elide: Text.ElideRight; Layout.fillWidth: true }
-                                    QQC2.Label { text: modelData[2]; opacity: 0.7; font: Kirigami.Theme.smallFont; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    QQC2.Label { textFormat: Text.PlainText; text: modelData[1]; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    QQC2.Label { textFormat: Text.PlainText; text: modelData[2]; opacity: 0.7; font: Kirigami.Theme.smallFont; elide: Text.ElideRight; Layout.fillWidth: true }
                                 }
                                 QQC2.ToolButton {
                                     icon.name: "edit-delete"

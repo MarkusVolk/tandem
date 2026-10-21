@@ -101,6 +101,7 @@ Kirigami.ScrollablePage {
                     id: contentColumn
                     spacing: Kirigami.Units.smallSpacing
                     QQC2.Label {
+                        textFormat: Text.PlainText
                         visible: modelData.body.length > 0
                         text: modelData.body
                         wrapMode: Text.Wrap
@@ -124,6 +125,7 @@ Kirigami.ScrollablePage {
                         }
                     }
                     QQC2.Label {
+                        textFormat: Text.PlainText
                         text: page.formatDate(modelData.date)
                         opacity: 0.6
                         font: Kirigami.Theme.smallFont

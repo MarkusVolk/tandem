@@ -46,8 +46,8 @@ Kirigami.ScrollablePage {
                 ColumnLayout {
                     spacing: 0
                     Layout.fillWidth: true
-                    QQC2.Label { text: name; elide: Text.ElideRight; Layout.fillWidth: true }
-                    QQC2.Label { text: statusText; opacity: 0.7; font: Kirigami.Theme.smallFont; elide: Text.ElideRight; Layout.fillWidth: true }
+                    QQC2.Label { textFormat: Text.PlainText; text: name; elide: Text.ElideRight; Layout.fillWidth: true }
+                    QQC2.Label { textFormat: Text.PlainText; text: statusText; opacity: 0.7; font: Kirigami.Theme.smallFont; elide: Text.ElideRight; Layout.fillWidth: true }
                 }
             }
             onClicked: {

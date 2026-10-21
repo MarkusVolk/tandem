@@ -64,8 +64,9 @@ Kirigami.ScrollablePage {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 0
-                    QQC2.Label { text: modelData.title; elide: Text.ElideRight; Layout.fillWidth: true }
+                    QQC2.Label { textFormat: Text.PlainText; text: modelData.title; elide: Text.ElideRight; Layout.fillWidth: true }
                     QQC2.Label {
+                        textFormat: Text.PlainText
                         text: modelData.last ? modelData.last.body.replace(/\n/g, " ") : ""
                         opacity: 0.7
                         font: Kirigami.Theme.smallFont
@@ -73,7 +74,7 @@ Kirigami.ScrollablePage {
                         Layout.fillWidth: true
                     }
                 }
-                QQC2.Label { text: modelData.last ? page.formatDate(modelData.last.date) : ""; opacity: 0.7; font: Kirigami.Theme.smallFont }
+                QQC2.Label { textFormat: Text.PlainText; text: modelData.last ? page.formatDate(modelData.last.date) : ""; opacity: 0.7; font: Kirigami.Theme.smallFont }
             }
             onClicked: applicationWindow().pageStack.push(conversationPage, { device: page.device, thread: modelData })
         }
