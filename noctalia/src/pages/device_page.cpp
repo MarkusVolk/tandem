@@ -33,7 +33,7 @@ std::unique_ptr<Node> tandem::DevicePage::build() {
            .fillWidth = true}
       )
   );
-  m_shownPlugins.clear();
+  m_groupsBuilt = false;
   m_shownTabs.clear();
   m_statusDirty = true;
   m_contentDirty = true;
@@ -73,12 +73,15 @@ void tandem::DevicePage::refresh(Renderer& /*renderer*/) {
     return;
   }
   const auto plugins = m_device->plugins();
-  if (plugins != m_shownPlugins) {
+  const bool paired = m_device->paired();
+  if (!m_groupsBuilt || plugins != m_shownPlugins || paired != m_shownPaired) {
+    m_groupsBuilt = true;
     m_shownPlugins = plugins;
+    m_shownPaired = paired;
     m_groups.clear();
     m_tabUsed.fill(false);
     m_tabUsed[static_cast<std::size_t>(DeviceTab::Device)] = true;
-    m_tabUsed[static_cast<std::size_t>(DeviceTab::Plugins)] = m_device->paired();
+    m_tabUsed[static_cast<std::size_t>(DeviceTab::Plugins)] = paired;
     for (const auto& plugin : plugins) {
       const auto tab = tabForPlugin(plugin);
       if (!tab) {

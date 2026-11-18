@@ -43,6 +43,8 @@ namespace tandem {
     std::vector<DeviceTab> m_shownTabs;
     DeviceTab m_tab = DeviceTab::Device;
     std::vector<std::string> m_shownPlugins;
+    bool m_shownPaired = false;
+    bool m_groupsBuilt = false;
     std::set<std::string> m_dirtyPlugins;
     Flex* m_banner = nullptr;
     Flex* m_tabBar = nullptr;
