@@ -2,7 +2,7 @@ project('tandem', 'c',
   version: '0.1.0',
   license: 'GPL-2.0-or-later',
   meson_version: '>= 1.1.0',
-  default_options: ['c_std=gnu11', 'warning_level=2', 'buildtype=debugoptimized'],
+  default_options: ['c_std=gnu11', 'cpp_std=c++23', 'warning_level=2', 'buildtype=debugoptimized'],
 )
 
 app_id = 'de.flk.Tandem'
@@ -25,8 +25,9 @@ if build_qt
     required: get_option('qt'))
   build_qt = qt_dep.found()
 endif
-if build_gtk and build_qt
-  error('The GTK and the Qt frontend share the application id, enable only one of them')
+build_noctalia = add_languages('cpp', native: false, required: get_option('noctalia'))
+if (build_gtk and build_qt) or (build_gtk and build_noctalia) or (build_qt and build_noctalia)
+  error('The frontends share the application id, enable only one of them')
 endif
 gnutls_dep = dependency('gnutls')
 pulse_dep = dependency('libpulse-mainloop-glib', required: get_option('pulse'))
@@ -68,5 +69,8 @@ if build_gtk
 endif
 if build_qt
   subdir('qt')
+endif
+if build_noctalia
+  subdir('noctalia')
 endif
 

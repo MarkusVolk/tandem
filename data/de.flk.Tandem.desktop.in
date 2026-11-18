@@ -2,11 +2,11 @@
 Name=Tandem
 GenericName=Phone Integration
 Comment=Connect your phone with the KDE Connect protocol
-Exec=tandem-gtk
+Exec=@FRONTEND@
 Icon=@APP_ID@
 Terminal=false
 Type=Application
-Categories=Network;Utility;GTK;
+Categories=@CATEGORIES@
 Keywords=phone;kdeconnect;sms;notifications;
 DBusActivatable=true
 StartupNotify=true

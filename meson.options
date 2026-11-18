@@ -1,4 +1,5 @@
 option('gtk', type : 'feature', value : 'auto', description : 'Build the GTK 4 frontend')
+option('noctalia', type : 'feature', value : 'disabled', description : 'Build the frontend on the Noctalia toolkit')
 option('qt', type : 'feature', value : 'disabled', description : 'Build the Qt 6 and Kirigami frontend')
 option('pulse', type : 'feature', value : 'auto', description : 'System volume through libpulse')
 option('gstreamer', type : 'feature', value : 'auto', description : 'Ring tone playback through GStreamer')

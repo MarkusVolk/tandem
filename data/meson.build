@@ -4,11 +4,20 @@ conf = configuration_data()
 conf.set('APP_ID', app_id)
 conf.set('BINDIR', bindir)
 
-if build_gtk
+frontend = {'tandem-gtk': build_gtk, 'tandem-noctalia': build_noctalia}
+foreach binary, enabled : frontend
+  if not enabled
+    continue
+  endif
+  frontend_conf = configuration_data()
+  frontend_conf.merge_from(conf)
+  frontend_conf.set('FRONTEND', binary)
+  frontend_conf.set('SERVICE_ARGS', binary == 'tandem-gtk' ? '--gapplication-service' : '--service')
+  frontend_conf.set('CATEGORIES', binary == 'tandem-gtk' ? 'Network;Utility;GTK;' : 'Network;Utility;')
   configure_file(
     input: 'de.flk.Tandem.desktop.in',
     output: app_id + '.desktop',
-    configuration: conf,
+    configuration: frontend_conf,
     install: true,
     install_dir: datadir / 'applications',
   )
@@ -16,11 +25,11 @@ if build_gtk
   configure_file(
     input: 'de.flk.Tandem.service.in',
     output: app_id + '.service',
-    configuration: conf,
+    configuration: frontend_conf,
     install: true,
     install_dir: datadir / 'dbus-1/services',
   )
-endif
+endforeach
 
 configure_file(
   input: 'de.flk.Tandem.Daemon.service.in',

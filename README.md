@@ -12,7 +12,9 @@ It comes in three parts:
 - `tandem-gtk`, a GTK 4 and libadwaita frontend (`de.flk.Tandem`) for the window, dialogs and
   the presenter overlay.
 - `tandem-qt`, a Qt 6 and Kirigami frontend under `qt/` with the same pages and the same
-  application id. Only one of the two frontends is installed at a time.
+  application id.
+- `tandem-noctalia`, a frontend under `noctalia/` on the UI library of the Noctalia shell, with
+  neither GTK nor Qt. Only one of the frontends is installed at a time.
 
 Other frontends can be written against the same D-Bus API.
 
@@ -38,10 +40,15 @@ wayland-protocols and wayland-scanner (`-Dwayland`, wlroots remote input and cli
 GTK frontend needs gtk4 and libadwaita-1 (`-Dgtk`). At run time: glib-networking and xdg-user-dirs;
 Avahi, xdg-desktop-portal and sound-theme-freedesktop are optional.
 
-The Kirigami frontend is built with `-Dgtk=disabled -Dqt=enabled`; the two frontends share the
+The Kirigami frontend is built with `-Dgtk=disabled -Dqt=enabled`; the frontends share the
 application id, so only one of them can be enabled. It needs Qt 6 (Core, Gui, Qml, Quick,
 QuickControls2, DBus, Widgets) with moc and rcc; at run time also KF6 Kirigami, Kirigami Addons
 and qqc2-desktop-style.
+
+The Noctalia frontend is built with `-Dgtk=disabled -Dnoctalia=enabled` and a C++23 compiler. It
+needs wayland-client, wayland-egl, EGL and GLES 2, freetype, fontconfig, cairo, pango, harfbuzz,
+xkbcommon, tomlplusplus, nlohmann_json and the stb headers. Its colors follow a Noctalia template,
+`noctalia/data/colors.toml`; `noctalia/CREDITS.md` names what it borrows.
 
 ## Running
 
