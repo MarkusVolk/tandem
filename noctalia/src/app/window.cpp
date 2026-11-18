@@ -150,6 +150,9 @@ tandem::Window::Window(Services services, RenderContext& renderer, TextInputServ
   }
   m_dispatcher.setTextInputContext(m_surface.wlSurface(), &m_textInput);
   m_listener = m_services.daemon.addListener([this](const DaemonEvent& event) { this->event(event); });
+  if (!m_services.daemon.running()) {
+    m_services.daemon.refresh();
+  }
   setRoot(std::make_unique<EmptyPage>(*this));
 }
 
@@ -398,8 +401,8 @@ void tandem::Window::showMenu() {
 void tandem::Window::run(Command command) {
   switch (command) {
   case Command::Refresh:
+    notify(m_services.daemon.running() ? "Looking for devices…" : "Starting the Tandem service…");
     m_services.daemon.refresh();
-    notify("Looking for devices…");
     break;
   case Command::Preferences:
     if (m_pages.back()->title() != "Preferences") {

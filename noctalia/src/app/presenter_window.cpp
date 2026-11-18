@@ -76,6 +76,8 @@ void tandem::PresenterWindow::prepare() {
   m_root->arrange(renderer, {0, 0, width, height});
   m_dot->setVisible(active);
   m_dot->arrange(
-      renderer, {state.number("x") * width - kRadius, state.number("y") * height - kRadius, 2.0F * kRadius, 2.0F * kRadius}
+      renderer,
+      {static_cast<float>(state.number("x")) * width - kRadius, static_cast<float>(state.number("y")) * height - kRadius,
+       2.0F * kRadius, 2.0F * kRadius}
   );
 }

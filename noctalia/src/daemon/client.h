@@ -104,6 +104,7 @@ namespace tandem {
     const std::vector<std::string>& plugins() const noexcept { return m_plugins; }
     const Variant& settings() const noexcept { return m_settings; }
 
+    // Starts the daemon by D-Bus activation when it is not running, else looks for devices.
     void refresh();
     void setSetting(const char* key, GVariant* value);
 

@@ -252,7 +252,17 @@ void tandem::DaemonClient::call(
   );
 }
 
-void tandem::DaemonClient::refresh() { call(kManagerPath, kManager, "Refresh", nullptr, {}); }
+void tandem::DaemonClient::refresh() {
+  if (m_running || m_connection == nullptr) {
+    call(kManagerPath, kManager, "Refresh", nullptr, {});
+    return;
+  }
+  g_dbus_connection_call(
+      m_connection, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "StartServiceByName",
+      g_variant_new("(su)", kName, 0U), nullptr, G_DBUS_CALL_FLAGS_NONE, kTimeout, nullptr,
+      finishCall, new PendingCall{.alive = m_alive, .done = {}}
+  );
+}
 
 void tandem::DaemonClient::setSetting(const char* key, GVariant* value) {
   call(kManagerPath, kManager, "SetSetting", g_variant_new("(sv)", key, value), [this](CallResult result) {
